@@ -6,11 +6,11 @@ from pydantic import BaseModel, Field
 class ToolResult(BaseModel):
     """Standardized output returned by every AegisOS tool."""
     success: bool
-    output: Optional[Any] = None
-    error: Optional[str] = None
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    output: Optional[Any]=None
+    error: Optional[str]=None
+    metadata: Dict[str,Any]=Field(default_factory=dict)
 
-    def to_agent_string(self) -> str:
+    def to_agent_string(self)->str:
         """Converts the result into a clean format for LLM context."""
         if self.success:
             return str(self.output)
@@ -24,11 +24,11 @@ class BaseAegisTool(ABC):
     args_schema: Type[BaseModel]
 
     @abstractmethod
-    def _run(self, **kwargs) -> ToolResult:
+    def _run(self,**kwargs)->ToolResult:
         """Core execution logic to be implemented by child tools."""
         pass
 
-    def execute(self, **kwargs) -> ToolResult:
+    def execute(self,**kwargs)->ToolResult:
         """
         Public execution wrapper:
         1. Validates input arguments using args_schema.
@@ -37,7 +37,7 @@ class BaseAegisTool(ABC):
         """
         try:
             # Validate input arguments against Pydantic schema
-            validated_args = self.args_schema(**kwargs)
+            validated_args=self.args_schema(**kwargs)
             return self._run(**validated_args.model_dump())
         except Exception as e:
             return ToolResult(
@@ -57,5 +57,4 @@ class BaseAegisTool(ABC):
             name=self.name,
             description=self.description,
             args_schema=self.args_schema,
-            return_direct=False
-        )
+            return_direct=False)
