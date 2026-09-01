@@ -23,7 +23,6 @@ class SandboxExecutor:
     Executes shell commands safely within an isolated workspace directory.
     Guarantees timeout protection and clean output capture.
     """
-
     def __init__(self,workspace_root: Optional[str]=None, default_timeout: int =30):
         self.workspace_root=Path(workspace_root or os.getcwd()).resolve()
         self.default_timeout=default_timeout
