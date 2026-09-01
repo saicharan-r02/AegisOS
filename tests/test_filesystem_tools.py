@@ -3,7 +3,6 @@ import pytest
 from pathlib import Path
 from Aegis_OS.tools.filesystem_tools import (ReadFileTool,WriteFileTool,ListDirTool,SearchCodeTool,_resolve_safe_path)
 
-
 def test_write_and_read_file(tmp_path):
     # Change cwd context to tmp_path for test isolation
     orig_cwd=os.getcwd()
