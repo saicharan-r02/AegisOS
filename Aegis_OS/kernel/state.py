@@ -7,11 +7,10 @@ class StepRecord(BaseModel):
     """Records an individual thought -> action -> observation step."""
     step_number: int
     thought: str
-    tool_name: Optional[str] = None
-    tool_input: Optional[Dict[str, Any]] = None
-    tool_output: Optional[str] = None
+    tool_name: Optional[str] =None
+    tool_input: Optional[Dict[str, Any]] =None
+    tool_output: Optional[str] =None
     timestamp: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
-
 
 class AgentState(BaseModel):
     """Global execution state and working memory for AegisOS agents."""
