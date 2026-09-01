@@ -3,7 +3,6 @@ from pydantic import BaseModel, Field
 from Aegis_OS.tools.base import BaseAegisTool,ToolResult
 from Aegis_OS.kernel.llm import get_llm
 
-
 class DummyArgs(BaseModel):
     number: int =Field(description="A number to double")
 
