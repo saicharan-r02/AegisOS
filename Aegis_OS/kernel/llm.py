@@ -6,22 +6,21 @@ from langchain_core.language_models.chat_models import BaseChatModel
 # Ensure .env values ALWAYS override terminal environment variables
 load_dotenv(override=True)
 
-
 def get_llm(
-    provider: Optional[str] = None,
-    model_name: Optional[str] = None,
-    temperature: float = 0.0
+    provider: Optional[str]=None,
+    model_name: Optional[str]=None,
+    temperature: float =0.0
 ) -> BaseChatModel:
     """
     Factory function to initialize and return the configured LLM provider.
     Reads defaults from environment variables if not passed explicitly.
     """
-    provider = (provider or os.getenv("AEGIS_MODEL_PROVIDER", "groq")).lower()
+    provider=(provider or os.getenv("AEGIS_MODEL_PROVIDER", "groq")).lower()
     
     # Priority: explicitly passed model_name -> env var -> default model
-    model_name = model_name or os.getenv("AEGIS_MODEL_NAME") or "llama-3.3-70b-versatile"
+    model_name=model_name or os.getenv("AEGIS_MODEL_NAME") or "llama-3.3-70b-versatile"
 
-    if provider == "groq":
+    if provider=="groq":
         from langchain_groq import ChatGroq
         api_key = os.getenv("GROQ_API_KEY")
         if not api_key:
@@ -32,27 +31,24 @@ def get_llm(
             api_key=api_key
         )
 
-    elif provider == "openai":
+    elif provider=="openai":
         from langchain_openai import ChatOpenAI
-        api_key = os.getenv("OPENAI_API_KEY")
+        api_key=os.getenv("OPENAI_API_KEY")
         if not api_key:
             raise ValueError("OPENAI_API_KEY is not set in environment variables.")
         return ChatOpenAI(
-            model=model_name if model_name != "llama-3.3-70b-versatile" else "gpt-4o",
+            model=model_name if model_name!="llama-3.3-70b-versatile" else "gpt-4o",
             temperature=temperature,
             api_key=api_key
         )
 
-    elif provider == "ollama":
+    elif provider=="ollama":
         from langchain_community.chat_models import ChatOllama
-        base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+        base_url=os.getenv("OLLAMA_BASE_URL","http://localhost:11434")
         return ChatOllama(
-            model=model_name if model_name != "llama-3.3-70b-versatile" else "qwen2.5-coder:7b",
+            model=model_name if model_name!="llama-3.3-70b-versatile" else "qwen2.5-coder:7b",
             temperature=temperature,
-            base_url=base_url
-        )
+            base_url=base_url)
 
     else:
-        raise ValueError(
-            f"Unsupported provider '{provider}'. Choose from: 'groq', 'openai', 'ollama'."
-        )
+        raise ValueError(f"Unsupported provider '{provider}'. Choose from: 'groq', 'openai', 'ollama'.")
