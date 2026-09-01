@@ -1,7 +1,6 @@
-from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional, Type
-from pydantic import BaseModel, Field
-
+from abc import ABC,abstractmethod
+from typing import Any,Dict,Optional,Type
+from pydantic import BaseModel,Field
 
 class ToolResult(BaseModel):
     """Standardized output returned by every AegisOS tool."""
@@ -15,7 +14,6 @@ class ToolResult(BaseModel):
         if self.success:
             return str(self.output)
         return f"TOOL ERROR: {self.error}"
-
 
 class BaseAegisTool(ABC):
     """Abstract Base Class for all AegisOS tools."""
@@ -42,8 +40,8 @@ class BaseAegisTool(ABC):
         except Exception as e:
             return ToolResult(
                 success=False,
-                error=f"Execution error in tool '{self.name}': {str(e)}",
-                metadata={"tool_name": self.name}
+                error=f"Execution error in tool '{self.name}':{str(e)}",
+                metadata={"tool_name":self.name}
             )
 
     def to_langchain_tool(self):
