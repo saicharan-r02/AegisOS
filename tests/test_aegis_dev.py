@@ -22,8 +22,8 @@ def test_aegis_dev_autonomous_investigation(tmp_path):
         state=agent.run(goal="Inspect 'pricing.py', identify the bug in calculate_discount, and explain what is wrong.",max_steps=5)
 
         # 3. Assertions with clear failure messages
-        assert state.error is None, f"Agent failed with error: {state.error}"
-        assert len(state.steps)>0, "Agent took no steps."
+        assert state.error is None,f"Agent failed with error: {state.error}"
+        assert len(state.steps)>0,"Agent took no steps."
         assert state.is_completed is True, "Agent did not finish the task."
         assert state.final_response is not None, "Agent returned empty response."
         assert "discount" in state.final_response.lower()
