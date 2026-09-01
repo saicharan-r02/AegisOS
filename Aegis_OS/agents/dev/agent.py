@@ -1,19 +1,13 @@
 import json
 import uuid
 from typing import List,Dict,Any,Optional
-from langchain_core.messages import SystemMessage, HumanMessage
-
+from langchain_core.messages import SystemMessage,HumanMessage
 from Aegis_OS.kernel.llm import get_llm
 from Aegis_OS.kernel.state import AgentState
 from Aegis_OS.tools.base import BaseAegisTool
-from Aegis_OS.tools.filesystem_tools import (
-    ReadFileTool,
-    WriteFileTool,
-    ListDirTool,
-    SearchCodeTool
-)
+from Aegis_OS.tools.filesystem_tools import ReadFileTool,WriteFileTool,ListDirTool,SearchCodeTool
 from Aegis_OS.tools.git_tools import GitDiffTool,GitStatusTool
-
+from Aegis_OS.tools.qa_tools import RunPytestTool
 
 DEV_SYSTEM_PROMPT="""You are AegisDev, an elite Autonomous Software Engineering Agent in AegisOS.
 Your objective is to solve software engineering tasks, inspect codebases, investigate bugs, and write clean, verified fixes.
@@ -30,17 +24,17 @@ CRITICAL RULES:
 - When done, explain what was fixed and provide evidence.
 """
 
-
 class AegisDevAgent:
     """Autonomous Software Engineering Agent."""
 
-    def __init__(self, tools: Optional[List[BaseAegisTool]] = None,model_name: Optional[str] =None):
+    def __init__(self,tools: Optional[List[BaseAegisTool]] =None,model_name: Optional[str] =None):
         # Default tools for AegisDev
         default_tools=[
             ReadFileTool(),
             WriteFileTool(),
             ListDirTool(),
             SearchCodeTool(),
+            RunPytestTool(),
             GitDiffTool(),
             GitStatusTool()
         ]
@@ -58,11 +52,8 @@ class AegisDevAgent:
 
         while state.current_step<state.max_steps and not state.is_completed:
             # Build conversation history
-            messages=[
-                SystemMessage(content=DEV_SYSTEM_PROMPT),
-                HumanMessage(content=f"GOAL: {state.goal}\n\nHISTORY SO FAR:\n{state.get_history_summary()}\n\nWhat is your next action?")
-            ]
-
+            messages=[SystemMessage(content=DEV_SYSTEM_PROMPT),
+                HumanMessage(content=f"GOAL: {state.goal}\n\nHISTORY SO FAR:\n{state.get_history_summary()}\n\nWhat is your next action?")]
             try:
                 response=self.llm_with_tools.invoke(messages)
             except Exception as e:
