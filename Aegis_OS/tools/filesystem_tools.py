@@ -1,181 +1,289 @@
-import os
-import re
+"""
+Filesystem Tools: Safe File Operations
+=======================================
+Provides three tools for filesystem interaction:
+
+  1. ReadFileTool  — Read file contents with 1-indexed line numbering.
+  2. WriteFileTool — Atomic file write with parent directory creation.
+  3. ListDirTool   — Structured directory listing with metadata.
+
+All tools enforce path confinement through `validate_path()` before
+any I/O operation is attempted. A path traversal attempt returns a
+ToolResult.fail() — it does NOT crash the agent loop.
+
+Why 1-Indexed Line Numbers?
+    LLMs are trained on documentation where line numbers start at 1
+    (e.g., Python tracebacks, linter output, GitHub line references).
+    If we feed 0-indexed lines, the model will off-by-one when referencing
+    them back in write operations or error reports. We add line numbers to
+    the output format so the model can pinpoint exact lines to edit.
+"""
+
 from pathlib import Path
-from typing import Optional,List,Dict,Any
-from pydantic import BaseModel,Field
+from typing import Optional
 
-from Aegis_OS.tools.base import BaseAegisTool,ToolResult
+from pydantic import BaseModel, Field
 
-def _resolve_safe_path(target_path: str,workspace_root: Optional[str]=None) -> Path:
-    """
-    Ensures that target_path stays strictly inside workspace_root
-    to prevent path traversal attacks (e.g. ../../etc/passwd).
-    """
-    root=Path(workspace_root or os.getcwd()).resolve()
-    resolved=(root/target_path).resolve()
-    
-    if not str(resolved).startswith(str(root)):
-        raise PermissionError(f"Access denied: '{target_path}' is outside the workspace sandbox '{root}'.")
-    return resolved
+from aegis_os.sandbox.path_guard import PathTraversalError, validate_path
+from aegis_os.tools.base import BaseAegisTool, ToolResult
 
-# 1. Read File Tool
-class ReadFileInput(BaseModel):
-    file_path: str =Field(description="Relative path to the file within workspace.")
-    start_line: Optional[int] =Field(default=1,description="1-indexed starting line number (inclusive).")
-    end_line: Optional[int] =Field(default=None,description="1-indexed ending line number (inclusive).")
+
+# ---------------------------------------------------------------------------
+# ReadFileTool
+# ---------------------------------------------------------------------------
+
+
+class ReadFileArgs(BaseModel):
+    path: str = Field(description="Relative path to the file within the workspace.")
+    start_line: Optional[int] = Field(
+        default=None,
+        ge=1,
+        description="First line to read (1-indexed, inclusive). Reads from start if None.",
+    )
+    end_line: Optional[int] = Field(
+        default=None,
+        ge=1,
+        description="Last line to read (1-indexed, inclusive). Reads to end if None.",
+    )
 
 
 class ReadFileTool(BaseAegisTool):
-    name="read_file"
-    description="Reads a file and returns its content with 1-indexed line numbers. Supports line range slicing."
-    args_schema=ReadFileInput
+    """
+    Read file contents with 1-indexed line numbers prefixed to each line.
 
-    def _run(self,file_path: str,start_line: Optional[int]=1,end_line: Optional[int]=None)->ToolResult:
+    Supports partial reads via start_line/end_line for large files.
+    Enforces path containment within the workspace root.
+    """
+
+    name = "read_file"
+    description = (
+        "Read the contents of a file within the workspace. "
+        "Returns lines prefixed with 1-indexed line numbers. "
+        "Use start_line and end_line to read a specific slice of the file."
+    )
+    args_schema = ReadFileArgs
+
+    def __init__(self, workspace_root: Path) -> None:
+        self.workspace_root = workspace_root
+
+    def _execute(self, args: ReadFileArgs) -> ToolResult:  # type: ignore[override]
         try:
-            safe_path=_resolve_safe_path(file_path)
-            if not safe_path.is_file():
-                return ToolResult(success=False,error=f"File not found:'{file_path}'")
+            safe_path = validate_path(args.path, self.workspace_root)
+        except PathTraversalError as exc:
+            return ToolResult.fail(error=str(exc))
 
-            with open(safe_path,"r",encoding="utf-8",errors="replace") as f:
-                lines=f.readlines()
-
-            total_lines=len(lines)
-            start=max(1,start_line or 1)
-            end=min(total_lines,end_line) if end_line else total_lines
-
-            if start>total_lines:
-                return ToolResult(success=False,error=f"start_line ({start}) exceeds total line count ({total_lines}).")
-
-            selected_lines=lines[start-1:end]
-            formatted_output=[
-                f"{i+start:4d} | {line.rstrip()}"
-                for i,line in enumerate(selected_lines)
-            ]
-
-            return ToolResult(
-                success=True,
-                output="\n".join(formatted_output),
-                metadata={
-                    "file_path":file_path,
-                    "total_lines":total_lines,
-                    "lines_returned":len(selected_lines),
-                }
+        if not safe_path.exists():
+            return ToolResult.fail(
+                error=f"File not found: '{args.path}'"
             )
-        except Exception as e:
-            return ToolResult(success=False, error=str(e))
+        if not safe_path.is_file():
+            return ToolResult.fail(
+                error=f"Path is not a file: '{args.path}'"
+            )
 
-# 2. Write File Tool
-class WriteFileInput(BaseModel):
-    file_path: str =Field(description="Relative path to the file to create or overwrite.")
-    content: str =Field(description="The exact text content to write.")
-    overwrite: bool =Field(default=True,description="Whether to overwrite existing files.")
+        try:
+            content = safe_path.read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            return ToolResult.fail(error=f"Failed to read file: {exc}")
+
+        all_lines = content.splitlines()
+        total_lines = len(all_lines)
+
+        # Apply line range (converting 1-indexed to 0-indexed slicing)
+        start_idx = (args.start_line - 1) if args.start_line else 0
+        end_idx = args.end_line if args.end_line else total_lines
+
+        # Clamp to actual file bounds
+        start_idx = max(0, min(start_idx, total_lines))
+        end_idx = max(start_idx, min(end_idx, total_lines))
+
+        selected_lines = all_lines[start_idx:end_idx]
+
+        # Prefix each line with its 1-indexed line number
+        numbered_lines = [
+            f"{start_idx + i + 1:>4}: {line}"
+            for i, line in enumerate(selected_lines)
+        ]
+
+        output = "\n".join(numbered_lines)
+
+        return ToolResult.ok(
+            output=output,
+            metadata={
+                "file_path": str(safe_path),
+                "total_lines": total_lines,
+                "lines_returned": len(selected_lines),
+                "start_line": start_idx + 1,
+                "end_line": start_idx + len(selected_lines),
+            },
+        )
+
+
+# ---------------------------------------------------------------------------
+# WriteFileTool
+# ---------------------------------------------------------------------------
+
+
+class WriteFileArgs(BaseModel):
+    path: str = Field(description="Relative path to the file within the workspace.")
+    content: str = Field(description="The complete new content to write to the file.")
+    create_dirs: bool = Field(
+        default=True,
+        description="If True, create parent directories if they do not exist.",
+    )
+
 
 class WriteFileTool(BaseAegisTool):
-    name="write_file"
-    description="Safely writes content to a file. Automatically creates any missing parent directories."
-    args_schema=WriteFileInput
+    """
+    Write content to a file atomically.
 
-    def _run(self,file_path: str,content: str,overwrite: bool =True)->ToolResult:
+    Uses a write-to-temp-then-rename strategy to prevent partial writes
+    from leaving the file in a corrupt state if the process is interrupted.
+    Enforces path containment within the workspace root.
+    """
+
+    name = "write_file"
+    description = (
+        "Write or overwrite a file within the workspace with the provided content. "
+        "The write is atomic — either the full content is written, or nothing changes. "
+        "Parent directories are created automatically unless create_dirs=False."
+    )
+    args_schema = WriteFileArgs
+
+    def __init__(self, workspace_root: Path) -> None:
+        self.workspace_root = workspace_root
+
+    def _execute(self, args: WriteFileArgs) -> ToolResult:  # type: ignore[override]
         try:
-            safe_path=_resolve_safe_path(file_path)
-            if safe_path.exists() and not overwrite:
-                return ToolResult(success=False,error=f"File already exists and overwrite=False: '{file_path}'")
+            safe_path = validate_path(args.path, self.workspace_root)
+        except PathTraversalError as exc:
+            return ToolResult.fail(error=str(exc))
 
-            safe_path.parent.mkdir(parents=True,exist_ok=True)
-            with open(safe_path,"w",encoding="utf-8") as f:
-                f.write(content)
-
-            return ToolResult(
-                success=True,
-                output=f"Successfully wrote {len(content)} characters to '{file_path}'.",
-                metadata={"file_path": file_path,"bytes_written":len(content.encode("utf-8"))}
+        if args.create_dirs:
+            try:
+                safe_path.parent.mkdir(parents=True, exist_ok=True)
+            except OSError as exc:
+                return ToolResult.fail(
+                    error=f"Failed to create parent directories: {exc}"
+                )
+        elif not safe_path.parent.exists():
+            return ToolResult.fail(
+                error=(
+                    f"Parent directory '{safe_path.parent}' does not exist. "
+                    f"Set create_dirs=True to create it automatically."
+                )
             )
-        except Exception as e:
-            return ToolResult(success=False,error=str(e))
 
-# 3. List Directory Tool
-class ListDirInput(BaseModel):
-    directory_path: str =Field(default=".",description="Relative path of directory to inspect.")
-    max_depth: int =Field(default=2,description="Maximum directory depth to traverse.")
+        # Atomic write: write to a temp file, then rename
+        temp_path = safe_path.with_suffix(safe_path.suffix + ".aegis_tmp")
+        try:
+            temp_path.write_text(args.content, encoding="utf-8")
+            temp_path.replace(safe_path)  # Atomic on same filesystem
+        except OSError as exc:
+            # Attempt cleanup of temp file
+            try:
+                temp_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+            return ToolResult.fail(error=f"Failed to write file: {exc}")
+
+        line_count = args.content.count("\n") + 1
+        return ToolResult.ok(
+            output=f"Successfully wrote {line_count} lines to '{args.path}'.",
+            metadata={
+                "file_path": str(safe_path),
+                "bytes_written": len(args.content.encode("utf-8")),
+                "line_count": line_count,
+            },
+        )
+
+
+# ---------------------------------------------------------------------------
+# ListDirTool
+# ---------------------------------------------------------------------------
+
+
+class ListDirArgs(BaseModel):
+    path: str = Field(
+        default=".",
+        description="Relative path to the directory within the workspace. Defaults to workspace root.",
+    )
+    show_hidden: bool = Field(
+        default=False,
+        description="If True, include hidden files and directories (names starting with '.').",
+    )
+
 
 class ListDirTool(BaseAegisTool):
-    name="list_dir"
-    description="Lists files and folders within a directory up to a specific depth."
-    args_schema=ListDirInput
+    """
+    List directory contents with file sizes and type indicators.
+    Enforces path containment within the workspace root.
+    """
 
-    def _run(self,directory_path: str =".",max_depth: int =2) -> ToolResult:
+    name = "list_dir"
+    description = (
+        "List the contents of a directory within the workspace. "
+        "Returns files with sizes and directories marked with trailing '/'. "
+        "Use show_hidden=True to include hidden entries."
+    )
+    args_schema = ListDirArgs
+
+    def __init__(self, workspace_root: Path) -> None:
+        self.workspace_root = workspace_root
+
+    def _execute(self, args: ListDirArgs) -> ToolResult:  # type: ignore[override]
         try:
-            safe_root=_resolve_safe_path(directory_path)
-            if not safe_root.is_dir():
-                return ToolResult(success=False, error=f"Directory not found: '{directory_path}'")
+            safe_path = validate_path(args.path, self.workspace_root)
+        except PathTraversalError as exc:
+            return ToolResult.fail(error=str(exc))
 
-            items=[]
-            for root,dirs,files in os.walk(safe_root):
-                rel_root=Path(root).relative_to(safe_root)
-                depth=len(rel_root.parts)
-                if depth>=max_depth:
-                    dirs.clear()
-                    continue
+        if not safe_path.exists():
+            return ToolResult.fail(error=f"Directory not found: '{args.path}'")
+        if not safe_path.is_dir():
+            return ToolResult.fail(error=f"Path is not a directory: '{args.path}'")
 
-                indent="  "*depth
-                folder_name=Path(root).name if str(rel_root)!="." else directory_path
-                items.append(f"{indent}[DIR]  {folder_name}/")
-
-                for f in files:
-                    file_indent="  "*(depth+1)
-                    items.append(f"{file_indent}[FILE] {f}")
-
-            return ToolResult(
-                success=True,
-                output="\n".join(items) if items else "(Empty directory)",
-                metadata={"directory": directory_path}
-            )
-        except Exception as e:
-            return ToolResult(success=False,error=str(e))
-
-# 4. Search Code Tool (Grep / Pattern Matching)
-class SearchCodeInput(BaseModel):
-    pattern: str =Field(description="Regex or literal pattern to search for.")
-    directory_path: str =Field(default=".",description="Subdirectory to search inside.")
-    file_extension: Optional[str] =Field(default=None,description="Optional extension filter like '.py' or '.js'.")
-
-class SearchCodeTool(BaseAegisTool):
-    name="search_code"
-    description="Searches for regex/text patterns across files in the workspace, returning matching line numbers and snippets."
-    args_schema=SearchCodeInput
-
-    def _run(self,pattern: str,directory_path: str=".",file_extension: Optional[str] =None) -> ToolResult:
         try:
-            safe_root=_resolve_safe_path(directory_path)
-            regex=re.compile(pattern, re.IGNORECASE)
-            matches: List[str]=[]
+            entries = sorted(safe_path.iterdir(), key=lambda p: (p.is_file(), p.name.lower()))
+        except OSError as exc:
+            return ToolResult.fail(error=f"Failed to list directory: {exc}")
 
-            for root,_,files in os.walk(safe_root):
-                # Ignore hidden directories and virtualenvs
-                if any(part.startswith(".") or part in ["node_modules","__pycache__","venv"] for part in Path(root).parts):
-                    continue
+        lines = []
+        file_count = 0
+        dir_count = 0
 
-                for file in files:
-                    if file_extension and not file.endswith(file_extension):
-                        continue
+        for entry in entries:
+            if not args.show_hidden and entry.name.startswith("."):
+                continue
+            if entry.is_dir():
+                lines.append(f"  📁  {entry.name}/")
+                dir_count += 1
+            elif entry.is_file():
+                try:
+                    size = entry.stat().st_size
+                    size_str = _format_size(size)
+                except OSError:
+                    size_str = "?"
+                lines.append(f"  📄  {entry.name:<40} {size_str:>10}")
+                file_count += 1
 
-                    full_path=Path(root)/file
-                    try:
-                        with open(full_path,"r",encoding="utf-8",errors="ignore") as f:
-                            for line_idx,line in enumerate(f,start=1):
-                                if regex.search(line):
-                                    rel_path=full_path.relative_to(Path(os.getcwd()).resolve())
-                                    matches.append(f"{rel_path}:{line_idx} | {line.strip()}")
-                    except Exception:
-                        continue
+        header = f"Directory: {safe_path}\n{'─' * 60}"
+        body = "\n".join(lines) if lines else "  (empty)"
+        footer = f"{'─' * 60}\n{dir_count} director{'y' if dir_count == 1 else 'ies'}, {file_count} file{'s' if file_count != 1 else ''}"
 
-            if not matches:
-                return ToolResult(success=True,output=f"No matches found for pattern: '{pattern}'")
+        return ToolResult.ok(
+            output=f"{header}\n{body}\n{footer}",
+            metadata={
+                "directory": str(safe_path),
+                "file_count": file_count,
+                "dir_count": dir_count,
+            },
+        )
 
-            return ToolResult(
-                success=True,
-                output="\n".join(matches[:100]),  # Limit to first 100 matches
-                metadata={"pattern": pattern,"match_count": len(matches)}
-            )
-        except Exception as e:
-            return ToolResult(success=False,error=str(e))
+
+def _format_size(size_bytes: int) -> str:
+    """Human-readable file size."""
+    for unit in ("B", "KB", "MB", "GB"):
+        if size_bytes < 1024:
+            return f"{size_bytes:.0f} {unit}"
+        size_bytes //= 1024
+    return f"{size_bytes:.0f} TB"
