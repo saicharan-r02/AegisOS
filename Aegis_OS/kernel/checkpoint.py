@@ -1,32 +1,22 @@
-"""
-Kernel Checkpoint: SQLite WAL-Mode Working Memory & Rollback Engine
-===================================================================
-Provides transactional, crash-resilient persistence of mission states,
-step logs, and state snapshots with point-in-time rollback capabilities.
-"""
-
 from datetime import datetime, timezone
 from pathlib import Path
 import sqlite3
-from typing import Any, Optional
-
+from typing import Any,Optional
 from aegis_os.kernel.exceptions import CheckpointNotFoundError
-from aegis_os.kernel.state import AgentState, StepRecord
-
+from aegis_os.kernel.state import AgentState,StepRecord
 
 class CheckpointStore:
     """
     SQLite-backed transactional state store.
     Enforces Write-Ahead Logging (WAL) mode for concurrent readers and writers.
     """
-
-    def __init__(self, db_path: str | Path = ":memory:") -> None:
-        self.db_path = str(db_path)
-        self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
+    def __init__(self,db_path: str | Path = ":memory:") -> None:
+        self.db_path =str(db_path)
+        self._conn =sqlite3.connect(self.db_path,check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._init_db()
 
-    def _init_db(self) -> None:
+    def _init_db(self)->None:
         """Initialize database schema and set WAL pragma."""
         with self._conn:
             # WAL mode enables concurrent reading while writing (ignored for :memory:)
@@ -72,14 +62,13 @@ class CheckpointStore:
                 );
             """)
 
-    def save_checkpoint(self, state: AgentState) -> int:
+    def save_checkpoint(self,state: AgentState) -> int:
         """
         Persist mission state, step history, and a point-in-time snapshot.
         Returns the checkpoint ID.
         """
-        now_str = datetime.now(timezone.utc).isoformat()
-        state_json = state.model_dump_json()
-
+        now_str=datetime.now(timezone.utc).isoformat()
+        state_json=state.model_dump_json()
         with self._conn:
             # 1. Upsert mission record
             self._conn.execute(
