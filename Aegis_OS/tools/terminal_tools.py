@@ -1,40 +1,24 @@
-"""
-Terminal Tool: Sandboxed Command Execution
-==========================================
-Wraps SubprocessSandbox as an AegisOS tool, allowing the agent
-to run shell commands through the validated, quota-bounded execution pipeline.
-
-Security Note:
-    This tool executes arbitrary shell commands. It is a HIGH-RISK capability.
-    In Milestone 6, ExecuteCommandTool will be wrapped by the Security Policy
-    Gateway which enforces RBAC rules and command blocklists before this tool
-    is ever invoked. For Milestone 1, we implement the tool with clean
-    contracts and trust the test suite to verify sandbox quotas enforce correctly.
-"""
-
 from pathlib import Path
 from typing import Optional
-
 from pydantic import BaseModel, Field
-
 from aegis_os.sandbox.base import SandboxExecutor
 from aegis_os.sandbox.quotas import ExecutionQuota
 from aegis_os.sandbox.subprocess_sandbox import SubprocessSandbox
-from aegis_os.tools.base import BaseAegisTool, ToolResult
+from aegis_os.tools.base import BaseAegisTool,ToolResult
 
 
 class ExecuteCommandArgs(BaseModel):
-    command: str = Field(
+    command: str=Field(
         description="The shell command to execute inside the sandbox."
     )
-    cwd: Optional[str] = Field(
+    cwd: Optional[str]=Field(
         default=None,
         description=(
             "Working directory for the command, relative to workspace root. "
             "Defaults to workspace root if not provided."
         ),
     )
-    timeout_seconds: Optional[float] = Field(
+    timeout_seconds: Optional[float]=Field(
         default=None,
         gt=0,
         description=(
@@ -43,54 +27,46 @@ class ExecuteCommandArgs(BaseModel):
         ),
     )
 
-
 class ExecuteCommandTool(BaseAegisTool):
     """
     Execute a shell command inside the AegisOS subprocess sandbox.
-
     Results include exit code, stdout, stderr, and timeout/truncation flags.
     The tool never raises — all execution failures are encoded in ToolResult.
     """
-
-    name = "execute_command"
-    description = (
+    name="execute_command"
+    description=(
         "Execute a shell command in the secure AegisOS sandbox. "
         "Returns the exit code, stdout, stderr, and whether the command timed out. "
         "Commands are killed if they exceed the execution timeout."
     )
-    args_schema = ExecuteCommandArgs
+    args_schema=ExecuteCommandArgs
 
-    def __init__(
-        self,
-        workspace_root: Path,
-        sandbox: Optional[SandboxExecutor] = None,
-        default_quota: Optional[ExecutionQuota] = None,
-    ) -> None:
-        self.workspace_root = workspace_root
-        self.sandbox: SandboxExecutor = sandbox or SubprocessSandbox()
-        self.default_quota = default_quota or ExecutionQuota()
+    def __init__(self,workspace_root: Path,sandbox: Optional[SandboxExecutor]=None,default_quota: Optional[ExecutionQuota]=None)-> None:
+        self.workspace_root=workspace_root
+        self.sandbox: SandboxExecutor=sandbox or SubprocessSandbox()
+        self.default_quota=default_quota or ExecutionQuota()
 
-    def _execute(self, args: ExecuteCommandArgs) -> ToolResult:  # type: ignore[override]
+    def _execute(self, args: ExecuteCommandArgs) -> ToolResult:
         # Resolve working directory
         if args.cwd:
-            cwd = self.workspace_root / args.cwd
+            cwd=self.workspace_root / args.cwd
             if not cwd.is_dir():
                 return ToolResult.fail(
                     error=f"Working directory does not exist: '{args.cwd}'"
                 )
         else:
-            cwd = self.workspace_root
+            cwd=self.workspace_root
 
         # Build quota (allow per-call timeout override)
         if args.timeout_seconds is not None:
-            quota = ExecutionQuota(
+            quota=ExecutionQuota(
                 timeout_seconds=args.timeout_seconds,
                 max_output_bytes=self.default_quota.max_output_bytes,
             )
         else:
-            quota = self.default_quota
+            quota=self.default_quota
 
-        result = self.sandbox.execute_command(
+        result=self.sandbox.execute_command(
             command=args.command,
             cwd=cwd,
             quota=quota,
@@ -109,15 +85,15 @@ class ExecuteCommandTool(BaseAegisTool):
         if result.output_truncated:
             output_parts.append("[WARNING] Output was truncated due to size limit.")
 
-        formatted_output = "\n\n".join(output_parts) or "(no output)"
+        formatted_output="\n\n".join(output_parts) or "(no output)"
 
-        success = result.success
-        error_msg = None
+        success=result.success
+        error_msg=None
         if not success:
             if result.timed_out:
-                error_msg = f"Command timed out after {quota.timeout_seconds} seconds."
+                error_msg=f"Command timed out after {quota.timeout_seconds} seconds."
             else:
-                error_msg = f"Command exited with code {result.exit_code}."
+                error_msg=f"Command exited with code {result.exit_code}."
 
         return ToolResult(
             success=success,
