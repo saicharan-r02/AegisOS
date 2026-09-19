@@ -1,67 +1,35 @@
-"""
-Filesystem Tools: Safe File Operations
-=======================================
-Provides three tools for filesystem interaction:
-
-  1. ReadFileTool  — Read file contents with 1-indexed line numbering.
-  2. WriteFileTool — Atomic file write with parent directory creation.
-  3. ListDirTool   — Structured directory listing with metadata.
-
-All tools enforce path confinement through `validate_path()` before
-any I/O operation is attempted. A path traversal attempt returns a
-ToolResult.fail() — it does NOT crash the agent loop.
-
-Why 1-Indexed Line Numbers?
-    LLMs are trained on documentation where line numbers start at 1
-    (e.g., Python tracebacks, linter output, GitHub line references).
-    If we feed 0-indexed lines, the model will off-by-one when referencing
-    them back in write operations or error reports. We add line numbers to
-    the output format so the model can pinpoint exact lines to edit.
-"""
-
 from pathlib import Path
 from typing import Optional
-
-from pydantic import BaseModel, Field
-
-from aegis_os.sandbox.path_guard import PathTraversalError, validate_path
-from aegis_os.tools.base import BaseAegisTool, ToolResult
-
-
-# ---------------------------------------------------------------------------
-# ReadFileTool
-# ---------------------------------------------------------------------------
-
+from pydantic import BaseModel,Field
+from aegis_os.sandbox.path_guard import PathTraversalError,validate_path
+from aegis_os.tools.base import BaseAegisTool,ToolResult
 
 class ReadFileArgs(BaseModel):
-    path: str = Field(description="Relative path to the file within the workspace.")
-    start_line: Optional[int] = Field(
+    path: str=Field(description="Relative path to the file within the workspace.")
+    start_line: Optional[int]=Field(
         default=None,
         ge=1,
         description="First line to read (1-indexed, inclusive). Reads from start if None.",
     )
-    end_line: Optional[int] = Field(
+    end_line: Optional[int]=Field(
         default=None,
         ge=1,
         description="Last line to read (1-indexed, inclusive). Reads to end if None.",
     )
 
-
 class ReadFileTool(BaseAegisTool):
     """
     Read file contents with 1-indexed line numbers prefixed to each line.
-
     Supports partial reads via start_line/end_line for large files.
     Enforces path containment within the workspace root.
     """
-
-    name = "read_file"
-    description = (
+    name="read_file"
+    description=(
         "Read the contents of a file within the workspace. "
         "Returns lines prefixed with 1-indexed line numbers. "
         "Use start_line and end_line to read a specific slice of the file."
     )
-    args_schema = ReadFileArgs
+    args_schema=ReadFileArgs
 
     def __init__(self, workspace_root: Path) -> None:
         self.workspace_root = workspace_root
@@ -86,26 +54,26 @@ class ReadFileTool(BaseAegisTool):
         except OSError as exc:
             return ToolResult.fail(error=f"Failed to read file: {exc}")
 
-        all_lines = content.splitlines()
-        total_lines = len(all_lines)
+        all_lines=content.splitlines()
+        total_lines=len(all_lines)
 
         # Apply line range (converting 1-indexed to 0-indexed slicing)
-        start_idx = (args.start_line - 1) if args.start_line else 0
-        end_idx = args.end_line if args.end_line else total_lines
+        start_idx=(args.start_line-1)if args.start_line else 0
+        end_idx=args.end_line if args.end_line else total_lines
 
         # Clamp to actual file bounds
-        start_idx = max(0, min(start_idx, total_lines))
-        end_idx = max(start_idx, min(end_idx, total_lines))
+        start_idx=max(0,min(start_idx,total_lines))
+        end_idx=max(start_idx,min(end_idx,total_lines))
 
-        selected_lines = all_lines[start_idx:end_idx]
+        selected_lines=all_lines[start_idx:end_idx]
 
         # Prefix each line with its 1-indexed line number
-        numbered_lines = [
+        numbered_lines=[
             f"{start_idx + i + 1:>4}: {line}"
             for i, line in enumerate(selected_lines)
         ]
 
-        output = "\n".join(numbered_lines)
+        output="\n".join(numbered_lines)
 
         return ToolResult.ok(
             output=output,
@@ -113,16 +81,10 @@ class ReadFileTool(BaseAegisTool):
                 "file_path": str(safe_path),
                 "total_lines": total_lines,
                 "lines_returned": len(selected_lines),
-                "start_line": start_idx + 1,
-                "end_line": start_idx + len(selected_lines),
+                "start_line": start_idx+1,
+                "end_line": start_idx+len(selected_lines),
             },
         )
-
-
-# ---------------------------------------------------------------------------
-# WriteFileTool
-# ---------------------------------------------------------------------------
-
 
 class WriteFileArgs(BaseModel):
     path: str = Field(description="Relative path to the file within the workspace.")
@@ -132,7 +94,6 @@ class WriteFileArgs(BaseModel):
         description="If True, create parent directories if they do not exist.",
     )
 
-
 class WriteFileTool(BaseAegisTool):
     """
     Write content to a file atomically.
@@ -141,17 +102,16 @@ class WriteFileTool(BaseAegisTool):
     from leaving the file in a corrupt state if the process is interrupted.
     Enforces path containment within the workspace root.
     """
-
-    name = "write_file"
-    description = (
+    name="write_file"
+    description=(
         "Write or overwrite a file within the workspace with the provided content. "
         "The write is atomic — either the full content is written, or nothing changes. "
         "Parent directories are created automatically unless create_dirs=False."
     )
-    args_schema = WriteFileArgs
+    args_schema=WriteFileArgs
 
     def __init__(self, workspace_root: Path) -> None:
-        self.workspace_root = workspace_root
+        self.workspace_root=workspace_root
 
     def _execute(self, args: WriteFileArgs) -> ToolResult:  # type: ignore[override]
         try:
@@ -197,18 +157,12 @@ class WriteFileTool(BaseAegisTool):
             },
         )
 
-
-# ---------------------------------------------------------------------------
-# ListDirTool
-# ---------------------------------------------------------------------------
-
-
 class ListDirArgs(BaseModel):
-    path: str = Field(
+    path: str=Field(
         default=".",
         description="Relative path to the directory within the workspace. Defaults to workspace root.",
     )
-    show_hidden: bool = Field(
+    show_hidden: bool=Field(
         default=False,
         description="If True, include hidden files and directories (names starting with '.').",
     )
@@ -219,21 +173,20 @@ class ListDirTool(BaseAegisTool):
     List directory contents with file sizes and type indicators.
     Enforces path containment within the workspace root.
     """
-
-    name = "list_dir"
-    description = (
+    name="list_dir"
+    description=(
         "List the contents of a directory within the workspace. "
         "Returns files with sizes and directories marked with trailing '/'. "
         "Use show_hidden=True to include hidden entries."
     )
-    args_schema = ListDirArgs
+    args_schema=ListDirArgs
 
-    def __init__(self, workspace_root: Path) -> None:
-        self.workspace_root = workspace_root
+    def __init__(self,workspace_root: Path) -> None:
+        self.workspace_root=workspace_root
 
-    def _execute(self, args: ListDirArgs) -> ToolResult:  # type: ignore[override]
+    def _execute(self,args: ListDirArgs) -> ToolResult:  # type: ignore[override]
         try:
-            safe_path = validate_path(args.path, self.workspace_root)
+            safe_path=validate_path(args.path,self.workspace_root)
         except PathTraversalError as exc:
             return ToolResult.fail(error=str(exc))
 
@@ -243,32 +196,32 @@ class ListDirTool(BaseAegisTool):
             return ToolResult.fail(error=f"Path is not a directory: '{args.path}'")
 
         try:
-            entries = sorted(safe_path.iterdir(), key=lambda p: (p.is_file(), p.name.lower()))
+            entries=sorted(safe_path.iterdir(), key=lambda p: (p.is_file(), p.name.lower()))
         except OSError as exc:
             return ToolResult.fail(error=f"Failed to list directory: {exc}")
 
-        lines = []
-        file_count = 0
-        dir_count = 0
+        lines=[]
+        file_count=0
+        dir_count=0
 
         for entry in entries:
             if not args.show_hidden and entry.name.startswith("."):
                 continue
             if entry.is_dir():
                 lines.append(f"  📁  {entry.name}/")
-                dir_count += 1
+                dir_count+=1
             elif entry.is_file():
                 try:
-                    size = entry.stat().st_size
-                    size_str = _format_size(size)
+                    size=entry.stat().st_size
+                    size_str=_format_size(size)
                 except OSError:
-                    size_str = "?"
-                lines.append(f"  📄  {entry.name:<40} {size_str:>10}")
-                file_count += 1
+                    size_str="?"
+                lines.append(f"  📄  {entry.name:<40}{size_str:>10}")
+                file_count+=1
 
-        header = f"Directory: {safe_path}\n{'─' * 60}"
-        body = "\n".join(lines) if lines else "  (empty)"
-        footer = f"{'─' * 60}\n{dir_count} director{'y' if dir_count == 1 else 'ies'}, {file_count} file{'s' if file_count != 1 else ''}"
+        header=f"Directory: {safe_path}\n{'─' * 60}"
+        body="\n".join(lines) if lines else "  (empty)"
+        footer=f"{'─' * 60}\n{dir_count} director{'y' if dir_count == 1 else 'ies'}, {file_count} file{'s' if file_count != 1 else ''}"
 
         return ToolResult.ok(
             output=f"{header}\n{body}\n{footer}",
@@ -279,11 +232,10 @@ class ListDirTool(BaseAegisTool):
             },
         )
 
-
 def _format_size(size_bytes: int) -> str:
     """Human-readable file size."""
-    for unit in ("B", "KB", "MB", "GB"):
-        if size_bytes < 1024:
+    for unit in ("B","KB","MB","GB"):
+        if size_bytes<1024:
             return f"{size_bytes:.0f} {unit}"
-        size_bytes //= 1024
+        size_bytes//=1024
     return f"{size_bytes:.0f} TB"
