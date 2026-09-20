@@ -25,8 +25,6 @@ class LLMConfig(BaseSettings):
     openai_api_key: Optional[str] =Field(default=None,alias="OPENAI_API_KEY")
     ollama_base_url: str =Field(default="http://localhost:11434",alias="OLLAMA_BASE_URL")
 
-
-# Default model names per provider if none is explicitly specified
 _DEFAULT_MODELS = {
     "groq": "llama-3.3-70b-versatile",
     "openai": "gpt-4o",
