@@ -54,7 +54,6 @@ class StateMachine:
                 max_steps=self.state.max_steps,
             )
 
-        # 2. Stagnation guard (repeated failure detection)
         if self.state.consecutive_failures >= self.state.stagnation_threshold:
             current_role=(role or self.state.active_role or AgentRole.CTO).value
             self.fail_mission("Execution halted due to repeated agent stagnation.")
@@ -64,7 +63,6 @@ class StateMachine:
                 role=current_role,
             )
 
-        # 3. Create active step
         target_role=role or self.state.active_role or AgentRole.CTO
         step=self.state.add_step(role=target_role,task_description=task_description,tool_name=tool_name,tool_args=tool_args)
         self._emit(StepStartedEvent(session_id=self.state.session_id,step=step))
