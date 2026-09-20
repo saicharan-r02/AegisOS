@@ -33,11 +33,9 @@ def parse_agent_response(content: str) -> AgentIntent:
     Never raises an unhandled exception.
     """
     text=content.strip()
-    # 1. Look for ```json ... ``` or ``` ... ``` code blocks
     codeblock_match=re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL)
     if codeblock_match:
         block_content=codeblock_match.group(1).strip()
-        # If codeblock is tagged as json or begins with {, treat it as JSON
         if block_content.startswith("{") or "```json" in text:
             try:
                 data=json.loads(block_content)
@@ -54,7 +52,6 @@ def parse_agent_response(content: str) -> AgentIntent:
                     parse_error=f"JSONDecodeError: {exc}. Raw content: {block_content[:200]}",
                 )
 
-    # 2. Look for outermost { ... }
     brace_match=re.search(r"(\{.*\})", text, re.DOTALL)
     if brace_match:
         raw_json=brace_match.group(1).strip()
@@ -73,7 +70,6 @@ def parse_agent_response(content: str) -> AgentIntent:
                 parse_error=f"JSONDecodeError: {exc}. Raw content: {raw_json[:200]}",
             )
 
-    # 3. Check if text starts with { (intended as JSON but malformed / unclosed)
     if text.startswith("{"):
         try:
             data=json.loads(text)
@@ -90,7 +86,6 @@ def parse_agent_response(content: str) -> AgentIntent:
                 parse_error=f"JSONDecodeError: {exc}. Raw content: {text[:200]}",
             )
 
-    # 4. Fallback: treat plain text response as a final answer
     return AgentIntent(thought="Direct conversational response.",final_answer=text)
 
 class BaseAgent:
@@ -112,14 +107,12 @@ class BaseAgent:
 
     @property
     def tools(self) -> ToolRegistry:
-        """Access the agent's tool registry."""
         return self.registry
 
     def bind_tool(self, tool: BaseAegisTool, overwrite: bool = False) -> None:
-        """Add a tool to the agent's registry."""
         self.registry.register(tool, overwrite=overwrite)
 
-    def format_prompt(self, task: str) -> list[BaseMessage]:
+    def format_prompt(self,task: str) -> list[BaseMessage]:
         """
         Build the messages array combining system instructions, tool specs,
         recent step history, and current task objective.
@@ -164,7 +157,6 @@ class BaseAgent:
                 )
             messages.append(HumanMessage(content="\n".join(history_lines)))
 
-        # Current task instruction
         messages.append(HumanMessage(content=f"Current Objective:\n{task}"))
         return messages
 
@@ -173,25 +165,24 @@ class BaseAgent:
         Execute one ReAct iteration:
         Reason (Prompt + LLM) -> Act (Tool Selection) -> Observe (Execution & Logging).
         """
-        # Ensure state machine has active role set
         if self.state_machine.state.active_role != self.role:
             self.state_machine.transition_role(self.role)
         messages=self.format_prompt(task)
-        # 1. Query LLM
+
         response=self.llm.invoke(messages)
         content=response.content if isinstance(response,AIMessage) else str(response)
-        # 2. Parse model intent
+
         intent=parse_agent_response(str(content))
-        # 3. If there was a JSON parsing error, record a failed step to allow self-correction
+
         if intent.parse_error:
             self.state_machine.begin_step(task_description="Formatting output",role=self.role,)
             return self.state_machine.end_step(error=f"Output parsing error: {intent.parse_error}. Please output valid JSON.")
-        # 4. If agent emitted a final answer, complete the step
+
         if intent.is_finished and not intent.action:
             self.state_machine.begin_step(task_description=intent.thought or "Final task completion",role=self.role,)
             result=ToolResult.ok(output=intent.final_answer or "Task concluded.")
             return self.state_machine.end_step(tool_result=result)
-        # 5. Execute action via registered tool
+
         action_name=intent.action or ""
         tool=self.registry.get(action_name)
         if not tool:
@@ -205,18 +196,18 @@ class BaseAgent:
                 error=f"Tool '{action_name}' does not exist in agent registry. Available: {self.registry.list_names()}"
             )
 
-        # Begin step in state machine
         self.state_machine.begin_step(
             task_description=intent.thought or f"Execute {action_name}",
             role=self.role,
             tool_name=action_name,
             tool_args=intent.action_input,
         )
-        # Execute tool safely
+
         tool_result=tool.run(intent.action_input)
-        # Conclude step in state machine
+
         return self.state_machine.end_step(tool_result=tool_result)
-    def run_task(self,task: str,max_iterations: int =10) -> list[StepRecord]:
+        
+    def run_task(self,task: str,max_iterations: int=10) -> list[StepRecord]:
         """
         Run an autonomous ReAct loop up to max_iterations.
         Stops when the agent outputs a final answer or when the mission terminates.
@@ -228,12 +219,12 @@ class BaseAgent:
 
             record=self.step(task)
             records.append(record)
-            # If the step was a successful final answer, we are done
-            if record.tool_name is None and record.status.value == "SUCCESS":
+
+            if record.tool_name is None and record.status.value=="SUCCESS":
                 break
         return records
 
-    def run(self,task: str,max_iterations: int =10) -> str:
+    def run(self,task: str,max_iterations: int=10) -> str:
         """
         Run ReAct loop and return the final answer or summary of execution results.
         """
