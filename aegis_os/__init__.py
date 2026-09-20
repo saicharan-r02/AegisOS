@@ -1,9 +1,6 @@
-"""
-AegisOS: Autonomous AI Engineering Organization
-================================================
-The LLM is an untrusted reasoning engine.
-Deterministic code controls HOW actions are executed, verified, isolated, and audited.
-"""
+__version__="0.1.0"
+__author__="AegisOS Engineering"
 
-__version__ = "0.1.0"
-__author__ = "AegisOS Engineering"
+from aegis_os.orchestrator import MissionOrchestrator, MissionPhase, MissionSummary
+
+__all__ = ["__version__", "__author__", "MissionOrchestrator", "MissionPhase", "MissionSummary"]
