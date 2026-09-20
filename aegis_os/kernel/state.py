@@ -223,3 +223,34 @@ class MissionDAG(BaseModel):
             if edge.from_node==node_id and (edge.condition==condition or edge.condition=="always")
         ]
         return [self.nodes[nid] for nid in next_ids if nid in self.nodes]
+
+    def topological_sort(self) -> list[DAGNode]:
+        """
+        Return nodes in topological order using Kahn's algorithm.
+        Ensures dependencies are resolved before dependent tasks.
+        Raises CycleDetectedError if a cycle is present.
+        """
+        self.validate_acyclic()
+        in_degree: dict[str,int]={nid: 0 for nid in self.nodes}
+        adj: dict[str,list[str]]={nid: [] for nid in self.nodes}
+        for edge in self.edges:
+            if edge.from_node in self.nodes and edge.to_node in self.nodes:
+                adj[edge.from_node].append(edge.to_node)
+                in_degree[edge.to_node]+=1
+
+        queue=[nid for nid,deg in in_degree.items() if deg==0]
+        sorted_nodes:list[DAGNode]=[]
+
+        while queue:
+            curr_id=queue.pop(0)
+            sorted_nodes.append(self.nodes[curr_id])
+            for neighbor in adj[curr_id]:
+                in_degree[neighbor]-=1
+                if in_degree[neighbor]==0:
+                    queue.append(neighbor)
+
+        if len(sorted_nodes)!=len(self.nodes):
+            remaining=[nid for nid,deg in in_degree.items() if deg>0]
+            raise CycleDetectedError(cycle_path=remaining)
+
+        return sorted_nodes
