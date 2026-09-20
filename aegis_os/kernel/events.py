@@ -47,7 +47,6 @@ class ApprovalRequestedEvent(KernelEvent):
     command_or_file: str
     justification: str
 
-# Type alias for event handlers (can be sync function or async coroutine)
 EventHandler=Union[
     Callable[[KernelEvent],None],
     Callable[[KernelEvent],Coroutine[Any,Any,None]]
@@ -114,12 +113,10 @@ class EventBus:
                         loop=asyncio.get_running_loop()
                         loop.create_task(handler(event))
                     except RuntimeError:
-                        # No running event loop in current thread
                         asyncio.run(handler(event))
                 else:
                     handler(event)
-            except Exception as exc:  # noqa: BLE001
-                # Exception isolation: one subscriber error must not crash the publisher
+            except Exception as exc:
                 print(f"[EventBus Error] Handler {handler} failed for {event.event_type}: {exc}")
 
     async def publish_async(self,event: KernelEvent) -> None:
@@ -133,7 +130,7 @@ class EventBus:
                     await handler(event)
                 else:
                     handler(event)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 print(f"[EventBus Async Error] Handler {handler} failed for {event.event_type}: {exc}")
 
     def _record_event(self,event: KernelEvent) -> None:
@@ -146,7 +143,6 @@ class EventBus:
         specific_cls=self._subscribers.get(event.__class__.__name__,[])
         catchall=self._subscribers.get("*",[])
 
-        # Deduplicate while preserving insertion order
         seen: set[EventHandler]=set()
         handlers: list[EventHandler]=[]
         for h in specific_str+specific_cls+catchall:
