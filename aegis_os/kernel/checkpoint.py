@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime,timezone
 from pathlib import Path
 import sqlite3
 from typing import Any,Optional
@@ -13,14 +13,13 @@ class CheckpointStore:
     def __init__(self,db_path: str | Path = ":memory:") -> None:
         self.db_path =str(db_path)
         self._conn =sqlite3.connect(self.db_path,check_same_thread=False)
-        self._conn.row_factory = sqlite3.Row
+        self._conn.row_factory=sqlite3.Row
         self._init_db()
 
     def _init_db(self)->None:
         """Initialize database schema and set WAL pragma."""
         with self._conn:
-            # WAL mode enables concurrent reading while writing (ignored for :memory:)
-            if self.db_path != ":memory:":
+            if self.db_path!=":memory:":
                 self._conn.execute("PRAGMA journal_mode = WAL;")
             self._conn.execute("PRAGMA busy_timeout = 5000;")
             self._conn.execute("PRAGMA foreign_keys = ON;")
@@ -70,7 +69,6 @@ class CheckpointStore:
         now_str=datetime.now(timezone.utc).isoformat()
         state_json=state.model_dump_json()
         with self._conn:
-            # 1. Upsert mission record
             self._conn.execute(
                 """
                 INSERT INTO missions (session_id, goal, status, current_step_index, created_at, updated_at, state_json)
@@ -92,7 +90,6 @@ class CheckpointStore:
                 ),
             )
 
-            # 2. Upsert step records
             for step in state.step_history:
                 step_json = step.model_dump_json()
                 self._conn.execute(
@@ -114,8 +111,7 @@ class CheckpointStore:
                     ),
                 )
 
-            # 3. Insert or update point-in-time checkpoint
-            cursor = self._conn.execute(
+            cursor=self._conn.execute(
                 """
                 INSERT INTO checkpoints (session_id, step_index, state_snapshot_json, created_at)
                 VALUES (?, ?, ?, ?)
@@ -123,7 +119,7 @@ class CheckpointStore:
                     state_snapshot_json=excluded.state_snapshot_json,
                     created_at=excluded.created_at;
                 """,
-                (state.session_id, state.current_step_index, state_json, now_str),
+                (state.session_id,state.current_step_index,state_json,now_str),
             )
             return cursor.lastrowid or 0
 
@@ -148,16 +144,15 @@ class CheckpointStore:
             SELECT state_snapshot_json FROM checkpoints
             WHERE session_id = ? AND step_index = ?
             """,
-            (session_id, target_step_index),
+            (session_id,target_step_index),
         )
-        row = cursor.fetchone()
+        row=cursor.fetchone()
         if not row:
-            raise CheckpointNotFoundError(session_id=session_id, step_index=target_step_index)
+            raise CheckpointNotFoundError(session_id=session_id,step_index=target_step_index)
 
-        restored_state = AgentState.model_validate_json(row["state_snapshot_json"])
+        restored_state=AgentState.model_validate_json(row["state_snapshot_json"])
 
         with self._conn:
-            # Clean up later steps and checkpoints
             self._conn.execute(
                 "DELETE FROM steps WHERE session_id = ? AND step_index > ?",
                 (session_id, target_step_index),
@@ -167,7 +162,6 @@ class CheckpointStore:
                 (session_id, target_step_index),
             )
 
-            # Update mission record
             now_str = datetime.now(timezone.utc).isoformat()
             self._conn.execute(
                 """
@@ -188,7 +182,7 @@ class CheckpointStore:
 
     def list_missions(self) -> list[dict[str, Any]]:
         """Return all tracked missions for audit and dashboard view."""
-        cursor = self._conn.execute(
+        cursor=self._conn.execute(
             "SELECT session_id, goal, status, current_step_index, created_at, updated_at FROM missions ORDER BY updated_at DESC"
         )
         return [dict(row) for row in cursor.fetchall()]
