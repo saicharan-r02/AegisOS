@@ -1,8 +1,8 @@
 import json
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, Field
+from typing import Any,Dict,List,Optional
+from pydantic import BaseModel,Field
 from aegis_os.agents.base_agent import BaseAgent
 from aegis_os.agents.cto.prompts import SYSTEM_PROMPT
 from aegis_os.kernel.llm import get_llm
@@ -44,7 +44,7 @@ class AegisCTO(BaseAgent):
     def __init__(self,workspace_root: Optional[Path] = None,llm_provider: str = "openai",llm_model: Optional[str] = None,max_steps: int = 15,state_machine: Optional[StateMachine] = None):
         ws_root=Path(workspace_root) if workspace_root else Path.cwd()
         registry=ToolRegistry()
-        #CTO is READ-ONLY — reconnaissance and analysis only
+        # CTO is intentionally restricted to read-only tools for reconnaissance and planning.
         registry.register(ASTGrepTool())
         registry.register(GitStatusTool())
         registry.register(ReadFileTool(ws_root))
@@ -60,7 +60,7 @@ class AegisCTO(BaseAgent):
             max_steps=max_steps,
             state_machine=state_machine,
         )
-        self.workspace_root = ws_root
+        self.workspace_root=ws_root
 
     def plan_mission(self,goal: str) -> MissionPlan:
         """
@@ -83,12 +83,10 @@ class AegisCTO(BaseAgent):
 
     def _parse_mission_plan(self,raw: str) -> MissionPlan:
         """Extract and validate the MissionPlan JSON from agent output."""
-        #Try to extract from a markdown JSON code block first
         block_match=re.search(r"```json\s*(.*?)\s*```",raw,re.DOTALL)
         if block_match:
             json_str=block_match.group(1)
         else:
-            #Fallback:try to find a raw JSON object
             brace_match=re.search(r"\{.*\}",raw,re.DOTALL)
             if brace_match:
                 json_str=brace_match.group(0)
