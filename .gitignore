@@ -1,4 +1,37 @@
-
+# Environment & Secrets
 .env
+.env.*
+!.env.example
+
+# Python & Virtual Environments
 .venv/
+venv/
+ENV/
+env/
 __pycache__/
+*.py[cod]
+*$py.class
+
+# Build & Packaging
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# AegisOS Local State & Checkpoints
+.aegis/
+*.db
+*.db-wal
+*.db-shm
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
