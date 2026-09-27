@@ -1,6 +1,6 @@
 [build-system]
 requires=["setuptools>=68", "wheel"]
-build-backend="setuptools.backends.legacy:build"
+build-backend="setuptools.build_meta"
 
 [project]
 name="aegis-os"
@@ -9,12 +9,17 @@ description="AegisOS: An Autonomous AI Engineering Organization"
 requires-python=">=3.11"
 readme="README.md"
 
+[project.scripts]
+aegis="aegis_os.cli.main:main"
+aegis-os="aegis_os.cli.main:main"
+
 [tool.setuptools.packages.find]
 where=["."]
 include=["aegis_os*"]
 
 [tool.pytest.ini_options]
 testpaths=["tests"]
+pythonpath=["."]
 asyncio_mode="auto"
 python_files=["test_*.py"]
 python_classes=["Test*"]
