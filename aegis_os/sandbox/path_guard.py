@@ -30,16 +30,13 @@ def validate_path(path: str | Path, workspace_root: Path) -> Path:
     if not workspace_root.is_absolute():
         raise ValueError(
             f"workspace_root must be an absolute path. Got: '{workspace_root}'")
-    # Canonicalize the workspace root (resolve any symlinks, .., etc.)
-    canonical_root = workspace_root.resolve()
-    # Convert input to Path object
-    target = Path(path)
-    # Resolve target: if relative, interpret relative to workspace_root
+    canonical_root=workspace_root.resolve()
+    target=Path(path)
     if target.is_absolute():
-        canonical_target = target.resolve()
+        canonical_target=target.resolve()
     else:
-        canonical_target = (canonical_root / target).resolve()
-    # The security check: canonical_target must be INSIDE canonical_root
+        canonical_target=(canonical_root / target).resolve()
+    # Enforce the workspace boundary after canonicalization
     try:
         canonical_target.relative_to(canonical_root)
     except ValueError:
