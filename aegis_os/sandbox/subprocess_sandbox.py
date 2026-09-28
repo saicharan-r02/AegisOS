@@ -1,5 +1,6 @@
 import os
 import platform
+import shlex
 import signal
 import subprocess
 from pathlib import Path
@@ -83,7 +84,7 @@ class SubprocessSandbox(SandboxExecutor):
             kwargs["start_new_session"] = True  # Creates new process group on POSIX
 
         # Prepare command
-        cmd=command if _IS_WINDOWS else command.split() if isinstance(command, str) else command
+        cmd=command if _IS_WINDOWS else shlex.split(command) if isinstance(command, str) else command
 
         timed_out=False
         try:
