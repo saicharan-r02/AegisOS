@@ -31,7 +31,8 @@ def validate_path(path: str | Path, workspace_root: Path) -> Path:
         raise ValueError(
             f"workspace_root must be an absolute path. Got: '{workspace_root}'")
     canonical_root=workspace_root.resolve()
-    target=Path(path)
+    normalized_path = str(path).replace("\\", "/")
+    target=Path(normalized_path)
     if target.is_absolute():
         canonical_target=target.resolve()
     else:
