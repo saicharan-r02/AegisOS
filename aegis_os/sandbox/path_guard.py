@@ -4,14 +4,14 @@ class PathTraversalError(PermissionError):
     Raised when a requested path resolves to a location outside the
     allowed workspace root. This is a security violation — not a user error.
     """
-    def __init__(self, requested: str | Path, workspace: Path) -> None:
-        self.requested = str(requested)
-        self.workspace = str(workspace)
+    def __init__(self,requested: str | Path,workspace: Path) -> None:
+        self.requested=str(requested)
+        self.workspace=str(workspace)
         super().__init__(
             f"PATH TRAVERSAL BLOCKED: '{requested}' resolves outside "
             f"workspace '{workspace}'. This operation is not permitted.")
 
-def validate_path(path: str | Path, workspace_root: Path) -> Path:
+def validate_path(path: str | Path,workspace_root: Path) -> Path:
     """
     Validate and canonicalize a path relative to the workspace root.
     The workspace_root itself is first canonicalized. Then the requested
@@ -19,10 +19,10 @@ def validate_path(path: str | Path, workspace_root: Path) -> Path:
     or canonicalized directly if it is absolute. The final canonical path
     must be a sub-path of (or equal to) the workspace root.
     Args:
-        path:             The path string or Path object as provided by the caller.
-        workspace_root:   The absolute root directory all file access is confined to.
+        path:            The path string or Path object as provided by the caller.
+        workspace_root:  The absolute root directory all file access is confined to.
     Returns:
-        The fully resolved, safe, absolute Path object.
+        The fully resolved,safe,absolute Path object.
     Raises:
         PathTraversalError: If the resolved path escapes the workspace.
         ValueError:          If workspace_root is not an absolute path.
@@ -31,20 +31,14 @@ def validate_path(path: str | Path, workspace_root: Path) -> Path:
         raise ValueError(
             f"workspace_root must be an absolute path. Got: '{workspace_root}'")
     canonical_root=workspace_root.resolve()
-    # Normalize Windows-style backslashes to forward slashes.
-    # On Linux, `\` is a valid filename character, not a separator — so
-    # `Path("..\\..\\foo")` would be treated as one literal filename and
-    # never escape the workspace. Normalizing first ensures consistent
-    # traversal-blocking behavior on all platforms.
-    normalized_path = str(path).replace("\\", "/")
+    normalized_path=str(path).replace("\\","/")
     target=Path(normalized_path)
     if target.is_absolute():
         canonical_target=target.resolve()
     else:
-        canonical_target=(canonical_root / target).resolve()
-    # Enforce the workspace boundary after canonicalization
+        canonical_target=(canonical_root/target).resolve()
     try:
         canonical_target.relative_to(canonical_root)
     except ValueError:
-        raise PathTraversalError(path, canonical_root)
+        raise PathTraversalError(path,canonical_root)
     return canonical_target
