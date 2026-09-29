@@ -4,14 +4,13 @@ import signal
 import subprocess
 from pathlib import Path
 from typing import Optional
-
-from aegis_os.sandbox.base import CommandResult, SandboxExecutor
+from aegis_os.sandbox.base import CommandResult,SandboxExecutor
 from aegis_os.sandbox.quotas import ExecutionQuota
 
-_DEFAULT_QUOTA = ExecutionQuota()
-_IS_WINDOWS = platform.system() == "Windows"
+_DEFAULT_QUOTA=ExecutionQuota()
+_IS_WINDOWS=platform.system()=="Windows"
 
-_TRUNCATION_NOTICE = (
+_TRUNCATION_NOTICE=(
     "\n\n[AEGIS WARNING] Output exceeded maximum byte limit and was truncated. "
     "Re-run with a narrower scope or increase max_output_bytes quota."
 )
@@ -24,30 +23,24 @@ def _kill_process_tree(pid: int) -> None:
     """
     try:
         if _IS_WINDOWS:
-            subprocess.run(
-                ["taskkill", "/F", "/T", "/PID", str(pid)],
-                capture_output=True,
-                check=False,
-            )
+            subprocess.run(["taskkill","/F","/T","/PID",str(pid)],capture_output=True,check=False)
         else:
-            pgid = os.getpgid(pid)
-            os.killpg(pgid, signal.SIGKILL)
-    except (ProcessLookupError, OSError):
-        # Process already exited — not an error condition
+            pgid=os.getpgid(pid)
+            os.killpg(pgid,signal.SIGKILL)
+    except(ProcessLookupError,OSError):
         pass
 
 
-def _truncate_output(data: bytes, max_bytes: int) -> tuple[str, bool]:
+def _truncate_output(data: bytes,max_bytes: int) -> tuple[str, bool]:
     """
     Decode bytes and truncate to max_bytes if needed.
     Returns:
-        (decoded_string, was_truncated)
+        (decoded_string,was_truncated)
     """
-    if len(data) > max_bytes:
-        truncated = data[:max_bytes].decode("utf-8", errors="replace")
-        return truncated + _TRUNCATION_NOTICE, True
-    return data.decode("utf-8",errors="replace"), False
-
+    if len(data)>max_bytes:
+        truncated=data[:max_bytes].decode("utf-8",errors="replace")
+        return truncated+_TRUNCATION_NOTICE,True
+    return data.decode("utf-8",errors="replace"),False
 
 class SubprocessSandbox(SandboxExecutor):
     """
@@ -57,14 +50,14 @@ class SubprocessSandbox(SandboxExecutor):
     and structured result encoding (never raises on subprocess failure).
     """
 
-    def execute_command(self,command: str, cwd: Optional[Path]=None,quota: Optional[ExecutionQuota]=None,) -> CommandResult:
+    def execute_command(self,command:str,cwd:Optional[Path]=None,quota:Optional[ExecutionQuota]=None,) -> CommandResult:
         """
-            Execute a shell command with full resource quota enforcement.
-            Args: 
-                command: Shell command string (passed to shell=True on Windows,
-                         or split and run directly on POSIX).
-                cwd:     Working directory. If None, inherits from parent process.
-                quota:   Resource limits. Uses _DEFAULT_QUOTA if None.
+        Execute a shell command with full resource quota enforcement.
+        Args: 
+            command: Shell command string (passed to shell=True on Windows,
+                     or split and run directly on POSIX).
+            cwd:     Working directory. If None, inherits from parent process.
+            quota:   Resource limits. Uses _DEFAULT_QUOTA if None.
         Returns:
             CommandResult — always returns, never raises from subprocess errors.
         """
@@ -72,22 +65,21 @@ class SubprocessSandbox(SandboxExecutor):
         cwd_path=str(cwd)if cwd else None
         
         kwargs:dict= {
-            "stdout": subprocess.PIPE,
-            "stderr": subprocess.PIPE,
-            "cwd": cwd_path,
-            "shell": _IS_WINDOWS,  # shell=True needed on Windows for command strings
+            "stdout":subprocess.PIPE,
+            "stderr":subprocess.PIPE,
+            "cwd":cwd_path,
+            "shell":_IS_WINDOWS
         }
         if _IS_WINDOWS:
             kwargs["creationflags"]=subprocess.CREATE_NEW_PROCESS_GROUP
         else:
-            kwargs["start_new_session"] = True  # Creates new process group on POSIX
+            kwargs["start_new_session"] = True
 
-        # Prepare command
-        cmd=command if _IS_WINDOWS else command.split() if isinstance(command, str) else command
+        cmd=command if _IS_WINDOWS else command.split() if isinstance(command,str) else command
 
         timed_out=False
         try:
-            process=subprocess.Popen(cmd,**kwargs)  # noqa: S603
+            process=subprocess.Popen(cmd,**kwargs)
             try:
                 raw_stdout,raw_stderr=process.communicate(
                     timeout=active_quota.timeout_seconds
@@ -99,7 +91,6 @@ class SubprocessSandbox(SandboxExecutor):
                 timed_out=True
 
         except FileNotFoundError:
-            # The command binary was not found (e.g., "pytest" not in PATH)
             return CommandResult(
                 exit_code=127,
                 stdout="",
@@ -107,8 +98,7 @@ class SubprocessSandbox(SandboxExecutor):
                 timed_out=False,
                 output_truncated=False,
             )
-        except Exception as exc:  # noqa: BLE001
-            # All other unexpected errors are encoded as a result, never re-raised
+        except Exception as exc:
             return CommandResult(
                 exit_code=1,
                 stdout="",
@@ -117,7 +107,6 @@ class SubprocessSandbox(SandboxExecutor):
                 output_truncated=False,
             )
 
-        # Enforce output byte limits across combined stdout + stderr
         half_limit=active_quota.max_output_bytes//2
         stdout_str,out_truncated=_truncate_output(raw_stdout,half_limit)
         stderr_str,err_truncated=_truncate_output(raw_stderr,half_limit)
