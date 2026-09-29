@@ -65,22 +65,26 @@ class TestEventBus:
         )
         assert len(received)==0
 
-    @pytest.mark.asyncio
-    async def test_async_event_subscription(self) -> None:
+    def test_async_event_subscription(self) -> None:
+        """Test async handler subscription using asyncio.run() — no plugin required."""
+        import asyncio
         bus=EventBus()
         received=[]
 
         async def async_handler(evt: KernelEvent) -> None:
             received.append(evt)
 
-        bus.subscribe(StateTransitionEvent, async_handler)
+        async def _run():
+            bus.subscribe(StateTransitionEvent, async_handler)
+            event=StateTransitionEvent(
+                from_role=AgentRole.CTO,
+                to_role=AgentRole.DEV,
+                step_index=2,
+            )
+            await bus.publish_async(event)
+            return event
 
-        event=StateTransitionEvent(
-            from_role=AgentRole.CTO,
-            to_role=AgentRole.DEV,
-            step_index=2,
-        )
-        await bus.publish_async(event)
+        event = asyncio.run(_run())
 
         assert len(received)==1
         assert received[0]==event
