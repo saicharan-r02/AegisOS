@@ -1,0 +1,15 @@
+version: "3.9"
+
+services:
+  aegisos:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./.aegis:/.aegis
+      - .:/workspace
+    environment:
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+    command: [ "aegis", "server", "--host", "0.0.0.1", "--port", "8000", "--db-path", "/.aegis/checkpoints.db" ]
