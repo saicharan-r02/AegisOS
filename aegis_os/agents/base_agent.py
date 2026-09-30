@@ -1,4 +1,4 @@
-import json
+﻿import json
 import re
 from typing import Any, Optional
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -9,6 +9,27 @@ from aegis_os.kernel.state import AgentRole,AgentState,MissionStatus,StepRecord
 from aegis_os.kernel.state_machine import StateMachine
 from aegis_os.tools.base import BaseAegisTool,ToolResult
 from aegis_os.tools.registry import ToolRegistry
+
+# â”€â”€ JSON helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+def _first_json(text: str) -> dict:
+    """
+    Extract the FIRST complete JSON object from arbitrary text.
+    Uses raw_decode so trailing data / multiple JSON blocks are safely ignored.
+    Raises json.JSONDecodeError if no valid object is found.
+    """
+    decoder = json.JSONDecoder()
+    stripped = text.strip()
+    for i, ch in enumerate(stripped):
+        if ch == '{':
+            try:
+                obj, _ = decoder.raw_decode(stripped, i)
+                if isinstance(obj, dict):
+                    return obj
+            except json.JSONDecodeError:
+                continue
+    raise json.JSONDecodeError("No JSON object found", stripped, 0)
+
 
 class AgentIntent(BaseModel):
     """
@@ -29,64 +50,45 @@ class AgentIntent(BaseModel):
 def parse_agent_response(content: str) -> AgentIntent:
     """
     Extract structured AgentIntent from raw LLM output.
-    Handles raw JSON, markdown-wrapped JSON code blocks, and plain text conversational answers.
+    Handles raw JSON, markdown-wrapped JSON, multiple JSON blocks, and plain text.
+    Uses raw_decode to safely ignore any trailing data after the first valid JSON.
     Never raises an unhandled exception.
     """
-    text=content.strip()
-    codeblock_match=re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL)
+    text = content.strip()
+
+    # 1. Try to find a ```json ... ``` code block first
+    codeblock_match = re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL)
     if codeblock_match:
-        block_content=codeblock_match.group(1).strip()
-        if block_content.startswith("{") or "```json" in text:
+        block = codeblock_match.group(1).strip()
+        if block.startswith("{"):
             try:
-                data=json.loads(block_content)
-                if isinstance(data,dict):
-                    return AgentIntent(
-                        thought=str(data.get("thought","")),
-                        action=data.get("action"),
-                        action_input=data.get("action_input",{}) if isinstance(data.get("action_input"),dict) else {},
-                        final_answer=data.get("final_answer"),
-                    )
-            except json.JSONDecodeError as exc:
+                data = _first_json(block)
                 return AgentIntent(
-                    thought="Failed to parse model JSON block.",
-                    parse_error=f"JSONDecodeError: {exc}. Raw content: {block_content[:200]}",
-                )
-
-    brace_match=re.search(r"(\{.*\})", text, re.DOTALL)
-    if brace_match:
-        raw_json=brace_match.group(1).strip()
-        try:
-            data=json.loads(raw_json)
-            if isinstance(data,dict):
-                return AgentIntent(
-                    thought=str(data.get("thought","")),
+                    thought=str(data.get("thought", "")),
                     action=data.get("action"),
-                    action_input=data.get("action_input",{}) if isinstance(data.get("action_input"),dict) else {},
+                    action_input=data.get("action_input", {}) if isinstance(data.get("action_input"), dict) else {},
                     final_answer=data.get("final_answer"),
                 )
-        except json.JSONDecodeError as exc:
-            return AgentIntent(
-                thought="Failed to parse model JSON block.",
-                parse_error=f"JSONDecodeError: {exc}. Raw content: {raw_json[:200]}",
-            )
-
-    if text.startswith("{"):
-        try:
-            data=json.loads(text)
-            if isinstance(data,dict):
+            except (json.JSONDecodeError, ValueError) as exc:
                 return AgentIntent(
-                    thought=str(data.get("thought","")),
-                    action=data.get("action"),
-                    action_input=data.get("action_input",{}) if isinstance(data.get("action_input"),dict) else {},
-                    final_answer=data.get("final_answer"),
+                    thought="Failed to parse JSON code block.",
+                    parse_error=f"JSONDecodeError: {exc}. Raw: {block[:200]}",
                 )
-        except json.JSONDecodeError as exc:
-            return AgentIntent(
-                thought="Failed to parse model JSON block.",
-                parse_error=f"JSONDecodeError: {exc}. Raw content: {text[:200]}",
-            )
 
-    return AgentIntent(thought="Direct conversational response.",final_answer=text)
+    # 2. Scan entire text for the first { ... } object (handles inline JSON and "extra data" cases)
+    try:
+        data = _first_json(text)
+        return AgentIntent(
+            thought=str(data.get("thought", "")),
+            action=data.get("action"),
+            action_input=data.get("action_input", {}) if isinstance(data.get("action_input"), dict) else {},
+            final_answer=data.get("final_answer"),
+        )
+    except (json.JSONDecodeError, ValueError):
+        pass
+
+    # 3. Plain conversational response â€” treat as final answer
+    return AgentIntent(thought="Direct conversational response.", final_answer=text)
 
 class BaseAgent:
     """
@@ -123,7 +125,7 @@ class BaseAgent:
             f"You are {self.name} (Role: {self.role.value}).\n\n"
             f"{tools_doc}\n\n"
             "### Response Format:\n"
-            "You MUST respond ONLY with a valid JSON object in one of two formats:\n\n"
+            "You MUST respond ONLY with a single valid JSON object. No extra text before or after.\n\n"
             "If you need to call a tool:\n"
             "```json\n"
             "{\n"
@@ -138,7 +140,8 @@ class BaseAgent:
             '  "thought": "Why the task is complete.",\n'
             '  "final_answer": "Your detailed findings, conclusions, or summary."\n'
             "}\n"
-            "```"
+            "```\n"
+            "IMPORTANT: Output EXACTLY ONE JSON object. Do NOT output multiple JSON objects."
         )
         messages: list[BaseMessage]=[SystemMessage(content=system_instruction)]
         recent_steps=self.state_machine.state.step_history[-5:]
@@ -211,17 +214,38 @@ class BaseAgent:
         """
         Run an autonomous ReAct loop up to max_iterations.
         Stops when the agent outputs a final answer or when the mission terminates.
+        Detects tool-repetition stagnation and injects corrective guidance.
         """
-        records: list[StepRecord]=[]
+        records: list[StepRecord] = []
+        consecutive_same_tool: int = 0
+        last_tool_name: Optional[str] = None
+        STAGNATION_LIMIT = 3
+
         for _ in range(max_iterations):
             if self.state_machine.state.is_terminal:
                 break
 
-            record=self.step(task)
+            active_task = task
+            if consecutive_same_tool >= STAGNATION_LIMIT:
+                active_task = (
+                    f"{task}\n\n"
+                    f"[SYSTEM ALERT] You have called '{last_tool_name}' {consecutive_same_tool} "
+                    f"times in a row. STOP. You MUST now call write_file to implement the solution "
+                    f"or call final_answer if complete. Do NOT call '{last_tool_name}' again."
+                )
+
+            record = self.step(active_task)
             records.append(record)
 
-            if record.tool_name is None and record.status.value=="SUCCESS":
+            if record.tool_name == last_tool_name and record.tool_name is not None:
+                consecutive_same_tool += 1
+            else:
+                consecutive_same_tool = 0
+                last_tool_name = record.tool_name
+
+            if record.tool_name is None and record.status.value == "SUCCESS":
                 break
+
         return records
 
     def run(self,task: str,max_iterations: int=10) -> str:

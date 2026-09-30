@@ -11,7 +11,7 @@ from aegis_os.cli.main import build_parser,main
 from aegis_os.kernel.checkpoint import CheckpointStore
 from aegis_os.kernel.events import MissionStatusChangedEvent,StateTransitionEvent,StepCompletedEvent,StepStartedEvent
 from aegis_os.kernel.state import AgentRole,AgentState,MissionStatus,StepRecord,StepStatus
-from aegis_os.orchestrator.models import MissionSummary,RepairCycleRecord
+from aegis_os.kernel.state import MissionSummary,RepairCycleRecord
 
 class TestCLIParser:
     """Test CLI argument parsing for all subcommands."""
@@ -23,7 +23,7 @@ class TestCLIParser:
         assert args.goal=="Build a feature"
         assert args.workspace=="/tmp"
         assert args.max_repairs==5
-        assert args.provider=="openai"
+        assert args.provider=="groq"
 
     def test_audit_parser(self) -> None:
         parser=build_parser()

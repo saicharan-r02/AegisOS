@@ -1,8 +1,13 @@
 import argparse
+import os
+os.environ.setdefault("PYTHONUTF8", "1")
+os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 from pathlib import Path
 import sys
+import json
+import threading
+import urllib.request
 from typing import List,Optional
-
 from aegis_os.agents.ops.agent import AegisOps
 from aegis_os.agents.qa.agent import AegisQA
 from aegis_os.agents.sec.agent import AegisSec
@@ -10,42 +15,42 @@ from aegis_os.cli.display import AegisDisplay
 from aegis_os.kernel.checkpoint import CheckpointStore
 from aegis_os.kernel.events import EventBus
 from aegis_os.kernel.state import MissionStatus
-from aegis_os.orchestrator.coordinator import MissionOrchestrator
-from aegis_os.judge.dataset import get_golden_dataset
-from aegis_os.judge.engine import AegisJudge
-from aegis_os.judge.models import BenchmarkReport
+from aegis_os.kernel.state_machine import MissionOrchestrator
+
+from aegis_os.api import app,init_app
+import uvicorn
 
 
 def build_parser() -> argparse.ArgumentParser:
     """Construct command-line parser with all subcommands."""
     parser = argparse.ArgumentParser(
         prog="aegis",
-        description="AegisOS: Autonomous AI Engineering Organization CLI",
+        description="AegisOS: Autonomous AI Engineering Organization CLI"
     )
-    subparsers = parser.add_subparsers(dest="subcommand", help="Operational Subcommands")
+    subparsers=parser.add_subparsers(dest="subcommand",help="Operational Subcommands")
 
     run_p = subparsers.add_parser("run",help="Launch an autonomous closed-loop engineering mission")
     run_p.add_argument("goal",type=str,help="High-level engineering objective or specification")
     run_p.add_argument("-w","--workspace",type=str,default=".",help="Target workspace root (default: current dir)")
-    run_p.add_argument("-p","--provider",type=str,default="openai",help="LLM Provider: openai, groq, or ollama")
+    run_p.add_argument("-p","--provider",type=str,default="groq",help="LLM Provider: openai, groq, or ollama")
     run_p.add_argument("-m","--model",type=str,default=None,help="Model name identifier (e.g. gpt-4o, llama-3.3-70b-versatile)")
     run_p.add_argument("--max-repairs",type=int,default=3,help="Max closed-loop repair iterations (default: 3)")
     run_p.add_argument("--max-steps",type=int,default=50,help="Hard limit on total mission steps (default: 50)")
     run_p.add_argument("--db-path",type=str,default=".aegis/checkpoints.db",help="Path to SQLite checkpoint database")
 
-    audit_p = subparsers.add_parser("audit",help="Run OWASP security audit and ops sanity checks")
+    audit_p=subparsers.add_parser("audit",help="Run OWASP security audit and ops sanity checks")
     audit_p.add_argument("-w","--workspace",type=str,default=".",help="Target workspace root")
     audit_p.add_argument("-t","--target",type=str,default="aegis_os/",help="Target directory to audit")
-    audit_p.add_argument("-p","--provider",type=str,default="openai",help="LLM Provider")
+    audit_p.add_argument("-p","--provider",type=str,default="groq",help="LLM Provider")
     audit_p.add_argument("-m","--model",type=str,default=None,help="Model identifier")
 
-    test_p = subparsers.add_parser("test",help="Run QA test verification with structured diagnostic reporting")
+    test_p=subparsers.add_parser("test",help="Run QA test verification with structured diagnostic reporting")
     test_p.add_argument("-w","--workspace",type=str,default=".",help="Target workspace root")
     test_p.add_argument("-t","--target",type=str,default="tests/",help="Target test directory or file")
-    test_p.add_argument("-p","--provider",type=str,default="openai",help="LLM Provider")
+    test_p.add_argument("-p","--provider",type=str,default="groq",help="LLM Provider")
     test_p.add_argument("-m","--model",type=str,default=None,help="Model identifier")
 
-    status_p = subparsers.add_parser("status",help="Inspect past mission runs or detailed step traces")
+    status_p=subparsers.add_parser("status",help="Inspect past mission runs or detailed step traces")
     status_p.add_argument("session_id",nargs="?",default=None,help="Optional session ID to inspect steps")
     status_p.add_argument("--db-path",type=str,default=".aegis/checkpoints.db",help="Path to SQLite checkpoint database")
 
@@ -57,8 +62,13 @@ def build_parser() -> argparse.ArgumentParser:
     benchmark_p = subparsers.add_parser("benchmark",help="Run AegisJudge evaluation suite")
     benchmark_p.add_argument("command", choices=["run"], help="Command to execute")
     benchmark_p.add_argument("-t","--task-id",type=str,default=None,help="Specific task ID to run (optional)")
-    benchmark_p.add_argument("-p","--provider",type=str,default="openai",help="LLM Provider")
+    benchmark_p.add_argument("-p","--provider",type=str,default="groq",help="LLM Provider")
     benchmark_p.add_argument("-m","--model",type=str,default=None,help="Model identifier")
+
+    server_p = subparsers.add_parser("server",help="Launch the War Room Web Dashboard backend")
+    server_p.add_argument("--host",type=str,default="127.0.0.1",help="Host IP to bind to")
+    server_p.add_argument("--port",type=int,default=8000,help="Port to run on")
+    server_p.add_argument("--db-path",type=str,default=".aegis/checkpoints.db",help="Path to SQLite checkpoint database")
 
     return parser
 
@@ -70,7 +80,7 @@ def handle_run(args: argparse.Namespace, display: AegisDisplay) -> int:
     if not db.parent.exists():
         db.parent.mkdir(parents=True, exist_ok=True)
 
-    display.show_banner()
+
     display.console.print(f"[bold cyan]Mission Objective:[/bold cyan] {args.goal}")
     display.console.print(f"[dim]Workspace: {ws} | Provider: {args.provider} | Max Repairs: {args.max_repairs}[/dim]\n")
 
@@ -78,6 +88,25 @@ def handle_run(args: argparse.Namespace, display: AegisDisplay) -> int:
     bus = EventBus()
     telemetry_listener = display.create_telemetry_handler()
     bus.subscribe("*", telemetry_listener)
+
+    # HTTP bridge: forward events to the War Room dashboard if it's running
+    _server_url = "http://127.0.0.1:8000"
+    def _http_bridge(event) -> None:
+        try:
+            body = json.dumps({
+                "event_type": event.__class__.__name__,
+                "payload": event.model_dump(mode="json")
+            }).encode()
+            req = urllib.request.Request(
+                f"{_server_url}/api/events/ingest",
+                data=body,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            urllib.request.urlopen(req, timeout=0.5)
+        except Exception:
+            pass  # server not running — silent skip
+    bus.subscribe("*", lambda e: threading.Thread(target=_http_bridge, args=(e,), daemon=True).start())
 
     orchestrator = MissionOrchestrator(
         workspace_root=ws,
@@ -112,7 +141,7 @@ def handle_run(args: argparse.Namespace, display: AegisDisplay) -> int:
 def handle_audit(args: argparse.Namespace, display: AegisDisplay) -> int:
     """Execute security scan and ops sanity check."""
     ws=Path(args.workspace).resolve()
-    display.show_banner()
+
     display.console.print(f"[bold magenta]Starting Security & Reliability Audit on:[/bold magenta] {args.target}")
 
     sec=AegisSec(workspace_root=ws,llm_provider=args.provider,llm_model=args.model)
@@ -132,7 +161,7 @@ def handle_audit(args: argparse.Namespace, display: AegisDisplay) -> int:
 def handle_test(args: argparse.Namespace, display: AegisDisplay) -> int:
     """Execute QA test suite and display diagnostics."""
     ws=Path(args.workspace).resolve()
-    display.show_banner()
+
     display.console.print(f"[bold yellow]Running AegisQA Test Suite on:[/bold yellow] {args.target}")
 
     qa=AegisQA(workspace_root=ws,llm_provider=args.provider,llm_model=args.model)
@@ -142,7 +171,7 @@ def handle_test(args: argparse.Namespace, display: AegisDisplay) -> int:
     return 0 if report.failed==0 and report.errors==0 else 1
 
 
-def handle_status(args: argparse.Namespace, display: AegisDisplay) -> int:
+def handle_status(args: argparse.Namespace,display: AegisDisplay) -> int:
     """List missions or inspect step history."""
     db=Path(args.db_path)
     if not db.exists():
@@ -190,9 +219,17 @@ def handle_rollback(args: argparse.Namespace, display: AegisDisplay) -> int:
 
 def handle_benchmark(args: argparse.Namespace, display: AegisDisplay) -> int:
     """Execute AegisJudge benchmarks."""
-    display.show_banner()
+
     display.console.print("[bold cyan]Initializing AegisJudge Benchmarking Suite...[/bold cyan]")
     
+    try:
+        from eval.dataset import get_golden_dataset
+        from eval.engine import AegisJudge
+        from eval.models import BenchmarkReport
+    except ImportError as e:
+        display.console.print(f"[bold red]Eval framework not available: {e}[/bold red]")
+        return 1
+
     dataset = get_golden_dataset()
     if getattr(args, "task_id", None):
         dataset = [t for t in dataset if t.id == args.task_id]
@@ -212,6 +249,22 @@ def handle_benchmark(args: argparse.Namespace, display: AegisDisplay) -> int:
     return 0 if report.pass_rate == 100.0 else 1
 
 
+def handle_server(args: argparse.Namespace, display: AegisDisplay) -> int:
+    """Launch the FastAPI server."""
+    db = Path(args.db_path)
+    if not db.parent.exists():
+        db.parent.mkdir(parents=True, exist_ok=True)
+
+    display.console.print(f"[bold cyan]AegisOS War Room[/bold cyan]  http://{args.host}:{args.port}")
+    display.console.print(f"[dim]Checkpoint DB : {db.resolve()}[/dim]")
+    display.console.print("[dim]Press Ctrl+C to stop.[/dim]\n")
+
+    init_app(db)
+    uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
+    return 0
+
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     """CLI application entrypoint."""
     parser=build_parser()
@@ -220,7 +273,6 @@ def main(argv: Optional[List[str]] = None) -> int:
     display=AegisDisplay()
 
     if not args.subcommand:
-        display.show_banner()
         parser.print_help()
         return 0
 
@@ -236,6 +288,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         return handle_rollback(args,display)
     elif args.subcommand=="benchmark":
         return handle_benchmark(args,display)
+    elif args.subcommand=="server":
+        return handle_server(args,display)
     return 0
 
 if __name__=="__main__":

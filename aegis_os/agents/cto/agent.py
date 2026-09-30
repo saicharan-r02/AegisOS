@@ -2,8 +2,9 @@ import json
 import re
 from pathlib import Path
 from typing import Any,Dict,List,Optional
+from langchain_core.messages import HumanMessage,SystemMessage
 from pydantic import BaseModel,Field
-from aegis_os.agents.base_agent import BaseAgent
+from aegis_os.agents.base_agent import BaseAgent, _first_json
 from aegis_os.agents.cto.prompts import SYSTEM_PROMPT
 from aegis_os.kernel.llm import get_llm
 from aegis_os.kernel.state import AgentRole
@@ -18,17 +19,17 @@ class MissionTask(BaseModel):
     task_id: str
     title: str
     description: str
-    assigned_to: str =Field(description="AegisDev | AegisQA | AegisSec | AegisOps")
-    depends_on: List[str] =Field(default_factory=list)
+    assigned_to: str = Field(description="AegisDev | AegisQA | AegisSec | AegisOps")
+    depends_on: List[str] = Field(default_factory=list)
     priority: str = Field(default="MEDIUM")
-    acceptance_criteria: List[str] =Field(default_factory=list)
+    acceptance_criteria: List[str] = Field(default_factory=list)
 
 class MissionPlan(BaseModel):
     """Structured engineering plan produced by AegisCTO."""
     mission_title: str
     objective: str
     tasks: List[MissionTask]
-    risk_flags: List[str]=Field(default_factory=list)
+    risk_flags: List[str] = Field(default_factory=list)
 
 class AegisCTO(BaseAgent):
     """
@@ -49,7 +50,7 @@ class AegisCTO(BaseAgent):
         registry.register(GitStatusTool())
         registry.register(ReadFileTool(ws_root))
 
-        llm=get_llm(provider=llm_provider,model_name=llm_model or "gpt-4o")
+        llm=get_llm(provider=llm_provider,model_name=llm_model)
 
         super().__init__(
             name="AegisCTO",
@@ -66,12 +67,8 @@ class AegisCTO(BaseAgent):
         """
         Run a full ReAct session to decompose the goal, then parse the
         final JSON MissionPlan from the agent's output.
-        Args:
-            goal: High-level engineering objective as plain text.
-        Returns:
-            A validated MissionPlan Pydantic model.
-        Raises:
-            ValueError: If the agent output cannot be parsed into a valid MissionPlan.
+        Supports chain-of-thought models that output reasoning before JSON.
+        Falls back through two progressively more explicit prompts.
         """
         prompt=(
             f"Please analyze the following engineering goal and produce a structured "
@@ -79,28 +76,74 @@ class AegisCTO(BaseAgent):
             f"## Goal\n{goal}"
         )
         raw_output=self.run(prompt)
-        return self._parse_mission_plan(raw_output)
-
-    def _parse_mission_plan(self,raw: str) -> MissionPlan:
-        """Extract and validate the MissionPlan JSON from agent output."""
-        block_match=re.search(r"```json\s*(.*?)\s*```",raw,re.DOTALL)
-        if block_match:
-            json_str=block_match.group(1)
-        else:
-            brace_match=re.search(r"\{.*\}",raw,re.DOTALL)
-            if brace_match:
-                json_str=brace_match.group(0)
-            else:
-                raise ValueError(
-                    f"AegisCTO produced no parseable MissionPlan JSON.\n"
-                    f"Raw output:\n{raw}"
-                )
 
         try:
-            data:Dict[str,Any]=json.loads(json_str)
-        except json.JSONDecodeError as exc:
-            raise ValueError(
-                f"AegisCTO output is not valid JSON: {exc}\nRaw:\n{json_str}"
-            ) from exc
+            return self._parse_mission_plan(raw_output)
+        except ValueError:
+            pass
 
-        return MissionPlan.model_validate(data)
+        # Fallback 1: dedicated follow-up forcing raw JSON
+        followup=(
+            "You have completed your analysis. Now output ONLY the MissionPlan as a "
+            "single valid JSON object. The JSON must start with { and end with }. "
+            "Include fields: mission_title, objective, tasks (list), risk_flags (list). "
+            "Each task must have: task_id, title, description, assigned_to, depends_on, "
+            "priority, acceptance_criteria. NO other text.\n\n"
+            f"Goal: {goal}"
+        )
+        messages=[
+            SystemMessage(content=self.system_prompt),
+            HumanMessage(content=followup),
+        ]
+        response=self.llm.invoke(messages)
+        content=getattr(response,"content",str(response))
+        try:
+            return self._parse_mission_plan(str(content))
+        except ValueError:
+            pass
+
+        # Fallback 2: minimal single-shot with strict schema
+        minimal_prompt=(
+            f"Output ONLY valid JSON for goal '{goal}'. No reasoning, no markdown. Start with {{:\n"
+            '{"mission_title":"Calculator","objective":"Build calculator","tasks":['
+            '{"task_id":"T001","title":"Implement","description":"Write calculator.py",'
+            '"assigned_to":"AegisDev","depends_on":[],"priority":"HIGH","acceptance_criteria":["passes tests"]}],'
+            '"risk_flags":["division by zero"]}'
+        )
+        messages2=[HumanMessage(content=minimal_prompt)]
+        response2=self.llm.invoke(messages2)
+        content2=getattr(response2,"content",str(response2))
+        return self._parse_mission_plan(str(content2))
+
+    def _parse_mission_plan(self,raw: str) -> MissionPlan:
+        """Extract and validate the MissionPlan JSON from agent output.
+        Handles ```json blocks, inline JSON, and deeply-nested JSON in reasoning text.
+        Uses raw_decode so trailing data after the JSON is safely ignored.
+        """
+        # 1. Try all ```json ... ``` or ``` ... ``` code blocks
+        for block_match in re.finditer(r"```(?:json)?\s*(.*?)\s*```", raw, re.DOTALL):
+            candidate=block_match.group(1).strip()
+            if candidate.startswith("{"):
+                try:
+                    data=_first_json(candidate)
+                    if "tasks" in data:
+                        return MissionPlan.model_validate(data)
+                except (json.JSONDecodeError, ValueError, Exception):
+                    continue
+
+        # 2. Scan for any JSON object containing 'tasks' key anywhere in the text
+        decoder=json.JSONDecoder()
+        stripped=raw.strip()
+        for i, ch in enumerate(stripped):
+            if ch == '{':
+                try:
+                    obj, _ = decoder.raw_decode(stripped, i)
+                    if isinstance(obj, dict) and "tasks" in obj:
+                        return MissionPlan.model_validate(obj)
+                except (json.JSONDecodeError, ValueError, Exception):
+                    continue
+
+        raise ValueError(
+            f"AegisCTO produced no parseable MissionPlan JSON.\n"
+            f"Raw output:\n{raw[:500]}..."
+        )

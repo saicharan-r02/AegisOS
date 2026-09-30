@@ -10,7 +10,7 @@ from aegis_os.agents.sec.agent import AegisSec,SecurityReport,SecuritySummary
 from aegis_os.kernel.checkpoint import CheckpointStore
 from aegis_os.kernel.events import EventBus,KernelEvent
 from aegis_os.kernel.state import AgentRole,MissionStatus
-from aegis_os.orchestrator.coordinator import MissionOrchestrator
+from aegis_os.kernel.state_machine import MissionOrchestrator
 
 
 @pytest.fixture

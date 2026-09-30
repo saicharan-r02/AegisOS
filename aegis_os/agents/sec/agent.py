@@ -44,11 +44,10 @@ class AegisSec(BaseAgent):
     """
     def __init__(self,workspace_root: Path,llm_provider: str="openai",llm_model: Optional[str]=None,max_steps: int = 20,state_machine: Optional[StateMachine] = None,):
         registry=ToolRegistry()
-        # READ-ONLY: no write, no git commit, no test runner
         registry.register(ReadFileTool(workspace_root))
         registry.register(ListDirTool(workspace_root))
         registry.register(ASTGrepTool())
-        llm=get_llm(provider=llm_provider,model_name=llm_model or "gpt-4o")
+        llm=get_llm(provider=llm_provider,model_name=llm_model)
         super().__init__(name="AegisSec",role=AgentRole.SEC,llm=llm,tools=registry,system_prompt=SYSTEM_PROMPT,max_steps=max_steps,state_machine=state_machine,)
         self.workspace_root=workspace_root
     def audit(self,target: str ="aegis_os/") -> SecurityReport:

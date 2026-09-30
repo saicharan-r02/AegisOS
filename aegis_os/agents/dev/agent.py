@@ -33,7 +33,7 @@ class AegisDev(BaseAgent):
         registry.register(GitCommitTool())
         registry.register(ExecuteCommandTool(workspace_root))
 
-        llm=get_llm(provider=llm_provider,model_name=llm_model or "gpt-4o")
+        llm=get_llm(provider=llm_provider,model_name=llm_model)
 
         super().__init__(
             name="AegisDev",

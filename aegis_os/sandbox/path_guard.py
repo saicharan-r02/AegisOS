@@ -37,8 +37,6 @@ def validate_path(path: str | Path,workspace_root: Path) -> Path:
         canonical_target=target.resolve()
     else:
         canonical_target=(canonical_root/target).resolve()
-    try:
-        canonical_target.relative_to(canonical_root)
-    except ValueError:
-        raise PathTraversalError(path,canonical_root)
+    if not canonical_target.is_relative_to(canonical_root):
+        raise PathTraversalError(path, canonical_root)
     return canonical_target

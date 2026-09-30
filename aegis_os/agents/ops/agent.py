@@ -32,7 +32,7 @@ class AegisOps(BaseAgent):
         registry.register(GitDiffTool())
         registry.register(ExecuteCommandTool(workspace_root))
 
-        llm = get_llm(provider=llm_provider, model_name=llm_model or "gpt-4o")
+        llm = get_llm(provider=llm_provider, model_name=llm_model)
 
         super().__init__(name="AegisOps",role=AgentRole.OPS,llm=llm,tools=registry,system_prompt=SYSTEM_PROMPT,max_steps=max_steps,state_machine=state_machine)
         self.workspace_root=workspace_root

@@ -52,7 +52,7 @@ class AegisQA(BaseAgent):
         registry.register(PytestRunnerTool())
         
         registry.register(WriteFileTool(tests_root))
-        llm = get_llm(provider=llm_provider, model_name=llm_model or "gpt-4o")
+        llm = get_llm(provider=llm_provider, model_name=llm_model)
         super().__init__(name="AegisQA",role=AgentRole.QA,llm=llm,tools=registry,system_prompt=SYSTEM_PROMPT,max_steps=max_steps,state_machine=state_machine,)
         self.workspace_root = workspace_root
 

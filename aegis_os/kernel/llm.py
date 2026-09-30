@@ -26,7 +26,7 @@ class LLMConfig(BaseSettings):
     ollama_base_url: str =Field(default="http://localhost:11434",alias="OLLAMA_BASE_URL")
 
 _DEFAULT_MODELS = {
-    "groq": "llama-3.3-70b-versatile",
+    "groq": "qwen/qwen3.8-27b",
     "openai": "gpt-4o",
     "ollama": "qwen2.5-coder:7b",
 }

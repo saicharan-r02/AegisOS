@@ -1,3 +1,4 @@
+import sys
 from typing import Any,Callable,List,Optional
 from rich.console import Console,Group
 from rich.panel import Panel
@@ -9,8 +10,8 @@ from aegis_os.agents.qa.agent import TestReport
 from aegis_os.agents.sec.agent import SecurityReport
 from aegis_os.kernel.events import KernelEvent,MissionStatusChangedEvent,StateTransitionEvent,StepCompletedEvent,StepStartedEvent
 from aegis_os.kernel.state import MissionStatus,StepRecord,StepStatus
-from aegis_os.orchestrator.models import MissionSummary,RepairCycleRecord
-from aegis_os.judge.models import BenchmarkReport
+from aegis_os.kernel.state import MissionSummary,RepairCycleRecord
+from typing import Any
 
 
 ROLE_COLORS={
@@ -36,7 +37,7 @@ class AegisDisplay:
     Renders terminal banners, live telemetry streams, reports, and mission summaries.
     """
     def __init__(self,console: Optional[Console] = None) -> None:
-        self.console=console or Console()
+        self.console=console or Console(highlight=False,force_terminal=True,force_jupyter=False,soft_wrap=True,file=open(sys.stdout.fileno(), mode='w', encoding='utf-8', buffering=1, closefd=False) if hasattr(sys.stdout,'fileno') else None)
 
     def show_banner(self) -> None:
         banner_text=Text()
@@ -80,7 +81,7 @@ class AegisDisplay:
         if plan.risk_flags:
             risks_branch=tree.add("[bold red]Identified Risk Flags[/bold red]")
             for risk in plan.risk_flags:
-                risks_branch.add(f"[yellow]⚠ {risk}[/yellow]")
+                risks_branch.add(f"[yellow]! {risk}[/yellow]")
 
         self.console.print(Panel(tree,border_style="cyan",title="[bold cyan]Planning Phase[/bold cyan]"))
 
@@ -237,37 +238,37 @@ class AegisDisplay:
                 from_style = ROLE_COLORS.get(event.from_role.value, "white") if event.from_role else "dim"
                 to_style = ROLE_COLORS.get(event.to_role.value, "white")
                 self.console.print(
-                    f"  [bold]➜ Control handoff:[/bold] "
-                    f"[{from_style}]{from_str}[/{from_style}] ➔ "
+                    f"  [bold]-> Control handoff:[/bold] "
+                    f"[{from_style}]{from_str}[/{from_style}] -> "
                     f"[{to_style}]{to_str}[/{to_style}] (Step {event.step_index})"
                 )
             elif isinstance(event, StepStartedEvent):
                 role_style=ROLE_COLORS.get(event.step.role.value, "white")
                 tool_info=f" [cyan]call: {event.step.tool_name}[/cyan]" if event.step.tool_name else ""
                 self.console.print(
-                    f"    [dim]● Step {event.step.step_index}[/dim] "
+                    f"    [dim]* Step {event.step.step_index}[/dim] "
                     f"[{role_style}][{event.step.role.value}][/{role_style}] "
                     f"{event.step.task_description[:65]}{tool_info}"
                 )
             elif isinstance(event, StepCompletedEvent):
                 if event.step.status == StepStatus.SUCCESS:
                     dur = f"{event.step.duration_ms:.0f}ms" if event.step.duration_ms else "ok"
-                    self.console.print(f"      [green]✔ Success ({dur})[/green]")
+                    self.console.print(f"      [green][OK] Success ({dur})[/green]")
                 else:
                     err = event.step.error or "Step failed"
-                    self.console.print(f"      [red]✘ Failed: {err[:80]}[/red]")
+                    self.console.print(f"      [red][ERR] Failed: {err[:80]}[/red]")
             elif isinstance(event, MissionStatusChangedEvent):
                 old_style = STATUS_COLORS.get(event.old_status.value, "white")
                 new_style = STATUS_COLORS.get(event.new_status.value, "white")
                 self.console.print(
-                    f"[bold]★ Mission Status:[/bold] "
-                    f"[{old_style}]{event.old_status.value}[/{old_style}] ➔ "
+                    f"[bold]* Mission Status:[/bold] "
+                    f"[{old_style}]{event.old_status.value}[/{old_style}] -> "
                     f"[{new_style}]{event.new_status.value}[/{new_style}]"
                 )
 
         return handle_event
 
-    def show_benchmark_report(self, report: BenchmarkReport) -> None:
+    def show_benchmark_report(self, report: Any) -> None:
         table = Table(title="AegisJudge Benchmark Results", border_style="cyan")
         table.add_column("Task ID", style="bold white")
         table.add_column("Pass/Fail", justify="center")

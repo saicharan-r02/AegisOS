@@ -7,8 +7,8 @@ from aegis_os.agents.qa.agent import AegisQA,TestFinding,TestReport
 from aegis_os.agents.sec.agent import AegisSec,SecurityFinding,SecurityReport,SecuritySummary
 from aegis_os.kernel.exceptions import CycleDetectedError
 from aegis_os.kernel.state import AgentRole,DAGNode,MissionDAG,MissionStatus
-from aegis_os.orchestrator.coordinator import MissionOrchestrator
-from aegis_os.orchestrator.models import MissionPhase
+from aegis_os.kernel.state_machine import MissionOrchestrator
+from aegis_os.kernel.state import MissionPhase
 
 
 class TestMissionDAGTopologicalSort:

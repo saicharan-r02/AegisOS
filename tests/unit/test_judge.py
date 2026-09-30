@@ -1,7 +1,7 @@
 import pytest
-from aegis_os.judge.models import BenchmarkTask, JudgeResult, BenchmarkReport
-from aegis_os.judge.dataset import get_golden_dataset
-from aegis_os.judge.engine import AegisJudge
+from eval.models import BenchmarkTask, JudgeResult, BenchmarkReport
+from eval.dataset import get_golden_dataset
+from eval.engine import AegisJudge
 from unittest.mock import patch, MagicMock
 
 def test_golden_dataset_structure():
@@ -25,7 +25,7 @@ def test_benchmark_report_metrics():
     assert report.passed_tasks == 1
     assert report.pass_rate == 50.0
 
-@patch("aegis_os.judge.engine.MissionOrchestrator")
+@patch("eval.engine.MissionOrchestrator")
 @patch("subprocess.run")
 def test_aegis_judge_execution(mock_run, mock_orchestrator):
     mock_orchestrator_instance = MagicMock()
