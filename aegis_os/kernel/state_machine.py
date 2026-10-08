@@ -235,11 +235,11 @@ class MissionOrchestrator:
         event_bus: Optional[EventBus]=None,
         max_repair_cycles: int=3,
         max_steps: int=50,
-        cto: Optional[AegisCTO]=None,
-        dev: Optional[AegisDev]=None,
-        qa: Optional[AegisQA]=None,
-        sec: Optional[AegisSec]=None,
-        ops: Optional[AegisOps]=None,
+        cto: Optional['AegisCTO']=None,
+        dev: Optional['AegisDev']=None,
+        qa: Optional['AegisQA']=None,
+        sec: Optional['AegisSec']=None,
+        ops: Optional['AegisOps']=None,
     ) -> None:
         self.workspace_root=Path(workspace_root) if workspace_root else Path.cwd()
         self.llm_provider=llm_provider

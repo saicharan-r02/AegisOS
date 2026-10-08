@@ -1,4 +1,4 @@
-﻿import json
+import json
 import re
 from typing import Any, Optional
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -227,11 +227,12 @@ class BaseAgent:
 
             active_task = task
             if consecutive_same_tool >= STAGNATION_LIMIT:
+                action_advice = "call final_answer if complete." if last_tool_name == "write_file" else "call write_file to implement the solution or call final_answer if complete."
                 active_task = (
                     f"{task}\n\n"
                     f"[SYSTEM ALERT] You have called '{last_tool_name}' {consecutive_same_tool} "
-                    f"times in a row. STOP. You MUST now call write_file to implement the solution "
-                    f"or call final_answer if complete. Do NOT call '{last_tool_name}' again."
+                    f"times in a row without completion. STOP. You MUST now {action_advice} "
+                    f"Do NOT call '{last_tool_name}' again."
                 )
 
             record = self.step(active_task)
