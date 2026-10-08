@@ -82,7 +82,6 @@ class AegisCTO(BaseAgent):
         except ValueError:
             pass
 
-        # Fallback 1: dedicated follow-up forcing raw JSON
         followup=(
             "You have completed your analysis. Now output ONLY the MissionPlan as a "
             "single valid JSON object. The JSON must start with { and end with }. "
@@ -102,7 +101,6 @@ class AegisCTO(BaseAgent):
         except ValueError:
             pass
 
-        # Fallback 2: minimal single-shot with strict schema
         minimal_prompt=(
             f"Output ONLY valid JSON for goal '{goal}'. No reasoning, no markdown. Start with {{:\n"
             '{"mission_title":"Calculator","objective":"Build calculator","tasks":['
@@ -120,7 +118,6 @@ class AegisCTO(BaseAgent):
         Handles ```json blocks, inline JSON, and deeply-nested JSON in reasoning text.
         Uses raw_decode so trailing data after the JSON is safely ignored.
         """
-        # 1. Try all ```json ... ``` or ``` ... ``` code blocks
         for block_match in re.finditer(r"```(?:json)?\s*(.*?)\s*```", raw, re.DOTALL):
             candidate=block_match.group(1).strip()
             if candidate.startswith("{"):
@@ -131,7 +128,6 @@ class AegisCTO(BaseAgent):
                 except (json.JSONDecodeError, ValueError, Exception):
                     continue
 
-        # 2. Scan for any JSON object containing 'tasks' key anywhere in the text
         decoder=json.JSONDecoder()
         stripped=raw.strip()
         for i, ch in enumerate(stripped):

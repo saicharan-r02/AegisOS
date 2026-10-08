@@ -1,4 +1,4 @@
-﻿from typing import Any, Optional
+from typing import Any, Optional
 from aegis_os.kernel.checkpoint import CheckpointStore
 from aegis_os.kernel.events import EventBus,MissionStatusChangedEvent,StateTransitionEvent,StepCompletedEvent,StepStartedEvent
 from aegis_os.kernel.exceptions import InvalidTransitionError,MaxStepsExceededError,StagnationError
@@ -370,9 +370,13 @@ class MissionOrchestrator:
                 task_instruction = (
                     f"Execute Planned Task [{node.node_id}]: {node.metadata.get('title', '')}\n"
                     f"Description: {node.task}\n"
-                    f"Acceptance Criteria: {node.metadata.get('acceptance_criteria', [])}"
+                    f"Acceptance Criteria: {node.metadata.get('acceptance_criteria', [])}\n\n"
+                    f"Overall Mission Goal: {goal}\n"
+                    f"Workspace Root: {self.workspace_root}\n\n"
+                    f"IMPORTANT: Your FIRST action must be to call write_file to implement the required code. "
+                    f"Do NOT call list_directory more than once. Start writing code immediately."
                 )
-                agent.run(task_instruction)
+                agent.run(task_instruction, max_iterations=15)
                 tasks_executed.append(node.node_id)
 
             self.state_machine.state.context_variables["phase"]=MissionPhase.VERIFICATION.value
@@ -502,6 +506,3 @@ class MissionOrchestrator:
             ops_report=ops_report,
             duration_seconds=duration,
         )
-
-
-
