@@ -1,61 +1,63 @@
-"""AegisOS Calculator Module.
+"""Calculator module providing basic arithmetic operations.
 
-Provides basic arithmetic operations: add, subtract, multiply, and divide.
+This module exposes four functions — :func:`add`, :func:`subtract`,
+:func:`multiply`, and :func:`divide` — that perform the corresponding
+arithmetic operation on two numeric operands.
 """
 
 
 def add(a: float, b: float) -> float:
-    """Return the sum of two numbers.
+    """Return the sum of *a* and *b*.
 
     Args:
         a: First operand.
         b: Second operand.
 
     Returns:
-        The sum of a and b.
+        The result of ``a + b``.
     """
     return a + b
 
 
 def subtract(a: float, b: float) -> float:
-    """Return the difference of two numbers.
+    """Return the difference of *a* and *b*.
 
     Args:
-        a: First operand (minuend).
-        b: Second operand (subtrahend).
+        a: Minuend.
+        b: Subtrahend.
 
     Returns:
-        The result of a - b.
+        The result of ``a - b``.
     """
     return a - b
 
 
 def multiply(a: float, b: float) -> float:
-    """Return the product of two numbers.
+    """Return the product of *a* and *b*.
 
     Args:
-        a: First operand.
-        b: Second operand.
+        a: First factor.
+        b: Second factor.
 
     Returns:
-        The product of a and b.
+        The result of ``a * b``.
     """
     return a * b
 
 
 def divide(a: float, b: float) -> float:
-    """Return the quotient of two numbers.
+    """Return the quotient of *a* divided by *b*.
 
     Args:
         a: Dividend.
-        b: Divisor.
+        b: Divisor. Must not be zero.
 
     Returns:
-        The result of a / b.
+        The result of ``a / b``.
 
     Raises:
-        ZeroDivisionError: If b is zero.
+        ValueError: If *b* is zero.
     """
     if b == 0:
-        raise ZeroDivisionError("Cannot divide by zero.")
+        raise ValueError("Cannot divide by zero.")
     return a / b

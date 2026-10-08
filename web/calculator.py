@@ -1,11 +1,3 @@
-"""AegisOS Calculator Module.
-
-Provides basic arithmetic operations: addition, subtraction, multiplication,
-and division. All functions accept numeric arguments (int or float) and
-return the corresponding result.
-"""
-
-
 def add(a: float, b: float) -> float:
     """Return the sum of two numbers.
 
