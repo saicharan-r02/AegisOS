@@ -15,5 +15,5 @@ __all__=[
     "AgentState",
     "DAGNode",
     "DAGEdge",
-    "MissionDAG",
+    "MissionDAG"
 ]
