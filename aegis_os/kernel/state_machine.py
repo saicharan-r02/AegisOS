@@ -32,7 +32,7 @@ class StateMachine:
             raise InvalidTransitionError(
                 from_state=self.state.status.value,
                 to_state=new_role.value,
-                reason="Cannot transition roles on a terminated mission.",
+                reason="Cannot transition roles on a terminated mission."
             )
 
         old_role=self.state.active_role
@@ -51,7 +51,7 @@ class StateMachine:
             self.fail_mission("Max execution step budget exceeded.")
             raise MaxStepsExceededError(
                 current_steps=self.state.current_step_index,
-                max_steps=self.state.max_steps,
+                max_steps=self.state.max_steps
             )
 
         if self.state.consecutive_failures >= self.state.stagnation_threshold:
@@ -89,7 +89,7 @@ class StateMachine:
                 session_id=self.state.session_id,
                 old_status=old_status,
                 new_status=self.state.status,
-                goal=self.state.mission_goal,
+                goal=self.state.mission_goal
             )
         )
         self._persist()
@@ -105,7 +105,7 @@ class StateMachine:
                 session_id=self.state.session_id,
                 old_status=old_status,
                 new_status=self.state.status,
-                goal=self.state.mission_goal,
+                goal=self.state.mission_goal
             )
         )
         self._persist()
@@ -116,7 +116,7 @@ class StateMachine:
             raise InvalidTransitionError(
                 from_state=self.state.status.value,
                 to_state=MissionStatus.PAUSED.value,
-                reason="Cannot pause a terminated mission.",
+                reason="Cannot pause a terminated mission."
             )
 
         old_status=self.state.status
@@ -127,7 +127,7 @@ class StateMachine:
                 session_id=self.state.session_id,
                 old_status=old_status,
                 new_status=self.state.status,
-                goal=self.state.mission_goal,
+                goal=self.state.mission_goal
             )
         )
         self._persist()
@@ -500,7 +500,7 @@ class MissionOrchestrator:
             qa_report=qa_report,
             sec_report=sec_report,
             ops_report=ops_report,
-            duration_seconds=duration,
+            duration_seconds=duration
         )
 
 
