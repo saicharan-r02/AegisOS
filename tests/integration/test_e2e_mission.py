@@ -79,7 +79,7 @@ class TestE2EMissionLifecycle:
         dev=MagicMock(spec=AegisDev)
         dev.role=AgentRole.DEV
 
-        def dev_run_mock(task_prompt:str)->str:
+        def dev_run_mock(task_prompt: str, *args, **kwargs) -> str:
             if "TASK-1"in task_prompt:
                 calc_file=git_workspace/"calc.py"
                 calc_file.write_text(

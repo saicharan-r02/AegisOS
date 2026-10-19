@@ -294,7 +294,7 @@ class TestMissionOrchestrator:
 
         executed_tasks=[]
 
-        def dev_run_side_effect(prompt: str) -> str:
+        def dev_run_side_effect(prompt: str, *args, **kwargs) -> str:
             if "step_1" in prompt:
                 executed_tasks.append("step_1")
             elif "step_2" in prompt:

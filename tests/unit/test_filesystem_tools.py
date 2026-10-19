@@ -1,6 +1,13 @@
 from pathlib import Path
 import pytest
-from aegis_os.tools.filesystem_tools import ListDirTool,ReadFileTool,WriteFileTool
+from aegis_os.tools.filesystem_tools import (
+    FindFilesTool,
+    GrepSearchTool,
+    ListDirTool,
+    ReadFileTool,
+    ReplaceInFileTool,
+    WriteFileTool,
+)
 
 class TestReadFileTool:
     """ReadFileTool tests for line numbering, slicing, and security."""
@@ -144,3 +151,121 @@ class TestListDirTool:
         assert result.success is False
         assert result.error is not None
         assert "PATH TRAVERSAL BLOCKED" in result.error
+
+
+class TestReplaceInFileTool:
+    """Unit tests for surgical code editing via ReplaceInFileTool."""
+
+    def test_replace_single_occurrence_success(self, tmp_workspace: Path) -> None:
+        file_path = tmp_workspace / "code.py"
+        file_path.write_text("def add(a, b):\n    return a - b\n", encoding="utf-8")
+
+        tool = ReplaceInFileTool(workspace_root=tmp_workspace)
+        result = tool.run({
+            "path": "code.py",
+            "target_content": "return a - b",
+            "replacement_content": "return a + b",
+        })
+
+        assert result.success is True
+        assert file_path.read_text(encoding="utf-8") == "def add(a, b):\n    return a + b\n"
+
+    def test_replace_target_not_found_fails(self, tmp_workspace: Path) -> None:
+        file_path = tmp_workspace / "code.py"
+        file_path.write_text("def hello(): pass\n", encoding="utf-8")
+
+        tool = ReplaceInFileTool(workspace_root=tmp_workspace)
+        result = tool.run({
+            "path": "code.py",
+            "target_content": "def goodbye(): pass",
+            "replacement_content": "def bye(): pass",
+        })
+
+        assert result.success is False
+        assert "Target content was not found" in (result.error or "")
+
+    def test_replace_ambiguous_multiple_occurrences_fails(self, tmp_workspace: Path) -> None:
+        file_path = tmp_workspace / "code.py"
+        file_path.write_text("value = 1\nvalue = 1\n", encoding="utf-8")
+
+        tool = ReplaceInFileTool(workspace_root=tmp_workspace)
+        result = tool.run({
+            "path": "code.py",
+            "target_content": "value = 1",
+            "replacement_content": "value = 2",
+        })
+
+        assert result.success is False
+        assert "appears 2 times" in (result.error or "")
+
+    def test_replace_all_occurrences_success(self, tmp_workspace: Path) -> None:
+        file_path = tmp_workspace / "code.py"
+        file_path.write_text("value = 1\nvalue = 1\n", encoding="utf-8")
+
+        tool = ReplaceInFileTool(workspace_root=tmp_workspace)
+        result = tool.run({
+            "path": "code.py",
+            "target_content": "value = 1",
+            "replacement_content": "value = 2",
+            "replace_all": True,
+        })
+
+        assert result.success is True
+        assert file_path.read_text(encoding="utf-8") == "value = 2\nvalue = 2\n"
+
+
+class TestGrepSearchTool:
+    """Unit tests for workspace-wide text and regex search."""
+
+    def test_grep_finds_matching_lines(self, tmp_workspace: Path) -> None:
+        (tmp_workspace / "module_a.py").write_text("def target_func(): pass\n", encoding="utf-8")
+        (tmp_workspace / "module_b.py").write_text("import os\n# calls target_func\n", encoding="utf-8")
+
+        tool = GrepSearchTool(workspace_root=tmp_workspace)
+        result = tool.run({"query": "target_func"})
+
+        assert result.success is True
+        assert "module_a.py:1" in result.output
+        assert "module_b.py:2" in result.output
+
+    def test_grep_regex_search(self, tmp_workspace: Path) -> None:
+        (tmp_workspace / "data.py").write_text("port = 8080\nport = 9000\n", encoding="utf-8")
+
+        tool = GrepSearchTool(workspace_root=tmp_workspace)
+        result = tool.run({"query": r"port\s*=\s*\d+", "is_regex": True})
+
+        assert result.success is True
+        assert "8080" in result.output
+        assert "9000" in result.output
+
+    def test_grep_no_matches_returns_empty(self, tmp_workspace: Path) -> None:
+        (tmp_workspace / "test.py").write_text("x = 1\n", encoding="utf-8")
+
+        tool = GrepSearchTool(workspace_root=tmp_workspace)
+        result = tool.run({"query": "non_existent_symbol"})
+
+        assert result.success is True
+        assert "No matches found" in result.output
+
+
+class TestFindFilesTool:
+    """Unit tests for glob file searching."""
+
+    def test_find_files_by_pattern(self, tmp_workspace: Path) -> None:
+        (tmp_workspace / "src").mkdir()
+        (tmp_workspace / "src" / "app.py").write_text("# main", encoding="utf-8")
+        (tmp_workspace / "src" / "config.json").write_text("{}", encoding="utf-8")
+
+        tool = FindFilesTool(workspace_root=tmp_workspace)
+        result = tool.run({"pattern": "*.py"})
+
+        assert result.success is True
+        assert "app.py" in result.output
+        assert "config.json" not in result.output
+
+    def test_find_files_no_match(self, tmp_workspace: Path) -> None:
+        tool = FindFilesTool(workspace_root=tmp_workspace)
+        result = tool.run({"pattern": "*.rust"})
+
+        assert result.success is True
+        assert "No files matching" in result.output
