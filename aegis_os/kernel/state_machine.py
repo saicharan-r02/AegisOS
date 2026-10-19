@@ -1,9 +1,21 @@
-from typing import Any, Optional
+from __future__ import annotations
+from pathlib import Path
+import time
+from typing import TYPE_CHECKING,Any,Optional
+import uuid
+
 from aegis_os.kernel.checkpoint import CheckpointStore
 from aegis_os.kernel.events import EventBus,MissionStatusChangedEvent,StateTransitionEvent,StepCompletedEvent,StepStartedEvent
 from aegis_os.kernel.exceptions import InvalidTransitionError,MaxStepsExceededError,StagnationError
-from aegis_os.kernel.state import AgentRole,AgentState,MissionStatus,StepRecord,StepStatus
+from aegis_os.kernel.state import AgentRole,AgentState,DAGNode,MissionDAG,MissionPhase,MissionStatus,MissionSummary,RepairCycleRecord,StepRecord,StepStatus
 from aegis_os.tools.base import ToolResult
+
+if TYPE_CHECKING:
+    from aegis_os.agents.cto.agent import AegisCTO,MissionPlan
+    from aegis_os.agents.dev.agent import AegisDev
+    from aegis_os.agents.ops.agent import AegisOps
+    from aegis_os.agents.qa.agent import AegisQA,TestReport
+    from aegis_os.agents.sec.agent import AegisSec,SecurityReport
 
 class StateMachine:
     """
@@ -17,7 +29,6 @@ class StateMachine:
         self.event_bus=event_bus
 
     def start_mission(self) -> None:
-        """Move mission from PENDING to RUNNING."""
         if self.state.status != MissionStatus.PENDING:
             raise InvalidTransitionError(from_state=self.state.status.value,to_state=MissionStatus.RUNNING.value,reason="Mission can only be started from PENDING state.")
 
@@ -32,7 +43,7 @@ class StateMachine:
             raise InvalidTransitionError(
                 from_state=self.state.status.value,
                 to_state=new_role.value,
-                reason="Cannot transition roles on a terminated mission.",
+                reason="Cannot transition roles on a terminated mission."
             )
 
         old_role=self.state.active_role
@@ -51,7 +62,7 @@ class StateMachine:
             self.fail_mission("Max execution step budget exceeded.")
             raise MaxStepsExceededError(
                 current_steps=self.state.current_step_index,
-                max_steps=self.state.max_steps,
+                max_steps=self.state.max_steps
             )
 
         if self.state.consecutive_failures >= self.state.stagnation_threshold:
@@ -60,7 +71,7 @@ class StateMachine:
             raise StagnationError(
                 failure_count=self.state.consecutive_failures,
                 threshold=self.state.stagnation_threshold,
-                role=current_role,
+                role=current_role
             )
 
         target_role=role or self.state.active_role or AgentRole.CTO
@@ -79,23 +90,21 @@ class StateMachine:
         return completed_step
 
     def complete_mission(self, reason: str = "Mission goal accomplished.") -> None:
-        """Conclude the mission successfully."""
-        old_status = self.state.status
-        self.state.status = MissionStatus.COMPLETED
-        self.state.context_variables["completion_reason"] = reason
+        old_status=self.state.status
+        self.state.status=MissionStatus.COMPLETED
+        self.state.context_variables["completion_reason"]=reason
 
         self._emit(
             MissionStatusChangedEvent(
                 session_id=self.state.session_id,
                 old_status=old_status,
                 new_status=self.state.status,
-                goal=self.state.mission_goal,
+                goal=self.state.mission_goal
             )
         )
         self._persist()
 
     def fail_mission(self, reason: str) -> None:
-        """Terminate the mission with a failure status."""
         old_status = self.state.status
         self.state.status = MissionStatus.FAILED
         self.state.context_variables["failure_reason"] = reason
@@ -105,18 +114,17 @@ class StateMachine:
                 session_id=self.state.session_id,
                 old_status=old_status,
                 new_status=self.state.status,
-                goal=self.state.mission_goal,
+                goal=self.state.mission_goal
             )
         )
         self._persist()
 
     def pause_mission(self) -> None:
-        """Pause mission execution (e.g. awaiting human input)."""
         if self.state.is_terminal:
             raise InvalidTransitionError(
                 from_state=self.state.status.value,
                 to_state=MissionStatus.PAUSED.value,
-                reason="Cannot pause a terminated mission.",
+                reason="Cannot pause a terminated mission."
             )
 
         old_status=self.state.status
@@ -127,18 +135,17 @@ class StateMachine:
                 session_id=self.state.session_id,
                 old_status=old_status,
                 new_status=self.state.status,
-                goal=self.state.mission_goal,
+                goal=self.state.mission_goal
             )
         )
         self._persist()
 
     def resume_mission(self) -> None:
-        """Resume execution of a paused mission."""
         if self.state.status != MissionStatus.PAUSED:
             raise InvalidTransitionError(
                 from_state=self.state.status.value,
                 to_state=MissionStatus.RUNNING.value,
-                reason="Can only resume from PAUSED state.",
+                reason="Can only resume from PAUSED state."
             )
 
         old_status=self.state.status
@@ -149,13 +156,12 @@ class StateMachine:
                 session_id=self.state.session_id,
                 old_status=old_status,
                 new_status=self.state.status,
-                goal=self.state.mission_goal,
+                goal=self.state.mission_goal
             )
         )
         self._persist()
 
     def abort_mission(self,reason: str = "Aborted by operator.") -> None:
-        """Abort execution immediately."""
         old_status=self.state.status
         self.state.status=MissionStatus.ABORTED
         self.state.context_variables["abort_reason"]=reason
@@ -165,13 +171,12 @@ class StateMachine:
                 session_id=self.state.session_id,
                 old_status=old_status,
                 new_status=self.state.status,
-                goal=self.state.mission_goal,
+                goal=self.state.mission_goal
             )
         )
         self._persist()
 
     def rollback(self,target_step_index: int) -> AgentState:
-        """Revert mission state to a prior step snapshot using CheckpointStore."""
         if not self.checkpoint_store:
             raise RuntimeError("Cannot rollback without a configured CheckpointStore.")
 
@@ -183,7 +188,7 @@ class StateMachine:
                 session_id=self.state.session_id,
                 old_status=MissionStatus.RUNNING,
                 new_status=self.state.status,
-                goal=self.state.mission_goal,
+                goal=self.state.mission_goal
             )
         )
         return self.state
@@ -196,19 +201,8 @@ class StateMachine:
         if self.checkpoint_store:
             self.checkpoint_store.save_checkpoint(self.state)
 
-from pathlib import Path
-import time
-from typing import Optional
-import uuid
-from aegis_os.kernel.checkpoint import CheckpointStore
-from aegis_os.kernel.events import EventBus
-from aegis_os.kernel.state import AgentRole,AgentState,DAGNode,MissionDAG,MissionStatus
-
-from aegis_os.kernel.state import MissionPhase,MissionSummary,RepairCycleRecord
-
 
 def _resolve_role(role_str:str)->AgentRole:
-    """Normalize an agent name or role string to an AgentRole enum."""
     normalized=role_str.strip().upper()
     if "DEV" in normalized:
         return AgentRole.DEV
@@ -223,23 +217,21 @@ def _resolve_role(role_str:str)->AgentRole:
     return AgentRole.DEV
 
 class MissionOrchestrator:
-    """Coordinates planning, execution, verification, repair, and finalization of missions."""
-
     def __init__(
         self,
         workspace_root: Optional[Path]=None,
-        llm_provider: str="openai",
+        llm_provider: str="groq",
         llm_model: Optional[str]=None,
         state_machine: Optional[StateMachine]=None,
         checkpoint_store: Optional[CheckpointStore]=None,
         event_bus: Optional[EventBus]=None,
         max_repair_cycles: int=3,
         max_steps: int=50,
-        cto: Optional['AegisCTO']=None,
-        dev: Optional['AegisDev']=None,
-        qa: Optional['AegisQA']=None,
-        sec: Optional['AegisSec']=None,
-        ops: Optional['AegisOps']=None,
+        cto: Optional[AegisCTO]=None,
+        dev: Optional[AegisDev]=None,
+        qa: Optional[AegisQA]=None,
+        sec: Optional[AegisSec]=None,
+        ops: Optional[AegisOps]=None
     ) -> None:
         self.workspace_root=Path(workspace_root) if workspace_root else Path.cwd()
         self.llm_provider=llm_provider
@@ -251,11 +243,11 @@ class MissionOrchestrator:
         self.max_repair_cycles=max_repair_cycles
         self.max_steps=max_steps
 
-        self.cto = cto
-        self.dev = dev
-        self.qa = qa
-        self.sec = sec
-        self.ops = ops
+        self.cto=cto
+        self.dev=dev
+        self.qa=qa
+        self.sec=sec
+        self.ops=ops
 
     def _initialize_agents(self) -> None:
         from aegis_os.agents.cto.agent import AegisCTO
@@ -264,14 +256,13 @@ class MissionOrchestrator:
         from aegis_os.agents.sec.agent import AegisSec
         from aegis_os.agents.ops.agent import AegisOps
         
-        if not self.cto: self.cto = AegisCTO(workspace_root=self.workspace_root,llm_provider=self.llm_provider,llm_model=self.llm_model)
-        if not self.dev: self.dev = AegisDev(workspace_root=self.workspace_root,llm_provider=self.llm_provider,llm_model=self.llm_model)
-        if not self.qa: self.qa = AegisQA(workspace_root=self.workspace_root,llm_provider=self.llm_provider,llm_model=self.llm_model)
-        if not self.sec: self.sec = AegisSec(workspace_root=self.workspace_root,llm_provider=self.llm_provider,llm_model=self.llm_model)
-        if not self.ops: self.ops = AegisOps(workspace_root=self.workspace_root,llm_provider=self.llm_provider,llm_model=self.llm_model)
+        if not self.cto: self.cto=AegisCTO(workspace_root=self.workspace_root,llm_provider=self.llm_provider,llm_model=self.llm_model)
+        if not self.dev: self.dev=AegisDev(workspace_root=self.workspace_root,llm_provider=self.llm_provider,llm_model=self.llm_model)
+        if not self.qa: self.qa=AegisQA(workspace_root=self.workspace_root,llm_provider=self.llm_provider,llm_model=self.llm_model)
+        if not self.sec: self.sec=AegisSec(workspace_root=self.workspace_root,llm_provider=self.llm_provider,llm_model=self.llm_model)
+        if not self.ops: self.ops=AegisOps(workspace_root=self.workspace_root,llm_provider=self.llm_provider,llm_model=self.llm_model)
 
     def _sync_agents_with_state_machine(self,sm:StateMachine)->None:
-        """Ensure all department agents share the active mission state machine."""
         for agent in (self.cto,self.dev,self.qa,self.sec,self.ops):
             if agent and hasattr(agent,"state_machine"):
                 agent.state_machine=sm
@@ -313,12 +304,12 @@ class MissionOrchestrator:
                 session_id=str(uuid.uuid4()),
                 mission_goal=goal,
                 status=MissionStatus.PENDING,
-                max_steps=self.max_steps,
+                max_steps=self.max_steps
             )
             self.state_machine=StateMachine(
                 state=state,
                 checkpoint_store=self.checkpoint_store,
-                event_bus=self.event_bus,
+                event_bus=self.event_bus
             )
 
         self.state_machine._persist()
@@ -345,7 +336,7 @@ class MissionOrchestrator:
                         metadata={
                             "title": task.title,
                             "priority": task.priority,
-                            "acceptance_criteria": task.acceptance_criteria,
+                            "acceptance_criteria": task.acceptance_criteria
                         }
                     )
                 )
@@ -368,9 +359,9 @@ class MissionOrchestrator:
                 self.state_machine.transition_role(node.role)
 
                 task_instruction = (
-                    f"Execute Planned Task [{node.node_id}]: {node.metadata.get('title', '')}\n"
+                    f"Execute Planned Task [{node.node_id}]: {node.metadata.get('title','')}\n"
                     f"Description: {node.task}\n"
-                    f"Acceptance Criteria: {node.metadata.get('acceptance_criteria', [])}\n\n"
+                    f"Acceptance Criteria: {node.metadata.get('acceptance_criteria',[])}\n\n"
                     f"Overall Mission Goal: {goal}\n"
                     f"Workspace Root: {self.workspace_root}\n\n"
                     f"IMPORTANT: Your FIRST action must be to call write_file to implement the required code. "
@@ -384,14 +375,13 @@ class MissionOrchestrator:
             while not self.state_machine.state.is_terminal:
                 self.state_machine.transition_role(AgentRole.QA)
                 qa_report = self.qa.run_and_report()
-                self.state_machine.state.context_variables["qa_report"] = qa_report.model_dump()
+                self.state_machine.state.context_variables["qa_report"]=qa_report.model_dump()
 
                 self.state_machine.transition_role(AgentRole.SEC)
                 sec_report = self.sec.audit()
-                self.state_machine.state.context_variables["sec_report"] = sec_report.model_dump()
-
-                qa_failed = (qa_report.failed > 0) or (qa_report.errors > 0)
-                sec_failed = (sec_report.summary.critical > 0) or (sec_report.summary.high > 0)
+                self.state_machine.state.context_variables["sec_report"]=sec_report.model_dump()
+                qa_failed = (qa_report.failed>0) or (qa_report.errors>0)
+                sec_failed = (sec_report.summary.critical>0) or (sec_report.summary.high>0)
 
                 if not qa_failed and not sec_failed:
                     if repair_history:
@@ -415,7 +405,7 @@ class MissionOrchestrator:
                 if sec_failed:
                     triggers.append("SECURITY_VULNERABILITIES")
                     for sf in sec_report.findings:
-                        if sf.severity in ("CRITICAL", "HIGH"):
+                        if sf.severity in ("CRITICAL","HIGH"):
                             issues.append(
                                 f"SEC [{sf.severity}] {sf.category} at {sf.file}:{sf.line} - "
                                 f"{sf.description}. Remediation: {sf.remediation}"
@@ -433,7 +423,7 @@ class MissionOrchestrator:
                             trigger="+".join(triggers),
                             issues_detected=issues,
                             dev_patch_summary=None,
-                            resolved=False,
+                            resolved=False
                         )
                     )
                     break
@@ -455,7 +445,7 @@ class MissionOrchestrator:
                         trigger="+".join(triggers),
                         issues_detected=issues,
                         dev_patch_summary=dev_patch_summary,
-                        resolved=False,
+                        resolved=False
                     )
                 )
 
@@ -488,7 +478,7 @@ class MissionOrchestrator:
                 sec_report=sec_report,
                 ops_report=ops_report,
                 duration_seconds=duration,
-                error=str(exc),
+                error=str(exc)
             )
 
         duration=round(time.time()-start_time,2)
@@ -504,5 +494,5 @@ class MissionOrchestrator:
             qa_report=qa_report,
             sec_report=sec_report,
             ops_report=ops_report,
-            duration_seconds=duration,
+            duration_seconds=duration
         )
