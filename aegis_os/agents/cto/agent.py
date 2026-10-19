@@ -42,7 +42,7 @@ class AegisCTO(BaseAgent):
     RBAC: Write tools are intentionally excluded.
     """
 
-    def __init__(self,workspace_root: Optional[Path] = None,llm_provider: str = "openai",llm_model: Optional[str] = None,max_steps: int = 15,state_machine: Optional[StateMachine] = None):
+    def __init__(self,workspace_root: Optional[Path] = None,llm_provider: str = "groq",llm_model: Optional[str] = None,max_steps: int = 15,state_machine: Optional[StateMachine] = None):
         ws_root=Path(workspace_root) if workspace_root else Path.cwd()
         registry=ToolRegistry()
         # CTO is intentionally restricted to read-only tools for reconnaissance and planning.

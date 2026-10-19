@@ -12,7 +12,7 @@ to ensure the operational health, buildability, and deployability of the system.
 5. **Telemetry** — Summarize build logs, test run outputs, and system health.
 
 ## Tools Available to You
-- `run_command`: Execute shell commands (pip, git, etc.).
+- `execute_command`: Execute shell commands (pip, git, etc.).
 - `read_file`: Read config files, logs, requirements.
 - `list_dir`: Inspect project structure.
 - `git_status`: Check VCS state.

@@ -6,7 +6,14 @@ from aegis_os.kernel.llm import get_llm
 from aegis_os.kernel.state import AgentRole
 from aegis_os.kernel.state_machine import StateMachine
 from aegis_os.tools.ast_tools import ASTGrepTool
-from aegis_os.tools.filesystem_tools import ListDirTool,ReadFileTool,WriteFileTool
+from aegis_os.tools.filesystem_tools import (
+    FindFilesTool,
+    GrepSearchTool,
+    ListDirTool,
+    ReadFileTool,
+    ReplaceInFileTool,
+    WriteFileTool,
+)
 from aegis_os.tools.git_tools import GitCommitTool,GitDiffTool,GitStatusTool
 from aegis_os.tools.registry import ToolRegistry
 from aegis_os.tools.terminal_tools import ExecuteCommandTool
@@ -17,16 +24,19 @@ class AegisDev(BaseAgent):
     Responsibilities:
     - Reads, writes, and refactors source code.
     - Commits completed changes with structured commit messages.
-    - Searches for symbols using AST-based grep.
+    - Searches for symbols using AST-based grep and regex grep.
     RBAC: Has write access to code. Cannot run tests or deploy.
     Requires workspace_root to scope filesystem operations safely.
     """
 
-    def __init__(self,workspace_root: Path,llm_provider: str = "openai",llm_model: Optional[str] = None,max_steps: int = 20,state_machine: Optional[StateMachine] = None):
+    def __init__(self,workspace_root: Path,llm_provider: str = "groq",llm_model: Optional[str] = None,max_steps: int = 20,state_machine: Optional[StateMachine] = None):
         registry=ToolRegistry()
         registry.register(ReadFileTool(workspace_root))
         registry.register(WriteFileTool(workspace_root))
+        registry.register(ReplaceInFileTool(workspace_root))
         registry.register(ListDirTool(workspace_root))
+        registry.register(GrepSearchTool(workspace_root))
+        registry.register(FindFilesTool(workspace_root))
         registry.register(ASTGrepTool())
         registry.register(GitStatusTool())
         registry.register(GitDiffTool())

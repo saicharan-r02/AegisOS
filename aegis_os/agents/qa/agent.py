@@ -41,7 +41,7 @@ class AegisQA(BaseAgent):
     to the tests/ subdirectory via the workspace_root mechanism — passing
     `workspace_root/tests` as the root confines writes to test files only.
     """
-    def __init__(self,workspace_root: Path,llm_provider: str = "openai",llm_model: Optional[str] = None,max_steps: int = 20,state_machine: Optional[StateMachine] = None,):
+    def __init__(self,workspace_root: Path,llm_provider: str = "groq",llm_model: Optional[str] = None,max_steps: int = 20,state_machine: Optional[StateMachine] = None,):
         tests_root = workspace_root / "tests"
         registry = ToolRegistry()
         

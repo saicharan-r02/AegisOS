@@ -24,7 +24,7 @@ class AegisOps(BaseAgent):
     - CANNOT write source files or commit.
     """
 
-    def __init__(self,workspace_root: Path,llm_provider: str = "openai",llm_model: Optional[str] = None,max_steps: int = 20,state_machine: Optional[StateMachine] = None):
+    def __init__(self,workspace_root: Path,llm_provider: str = "groq",llm_model: Optional[str] = None,max_steps: int = 20,state_machine: Optional[StateMachine] = None):
         registry = ToolRegistry()
         registry.register(ReadFileTool(workspace_root))
         registry.register(ListDirTool(workspace_root))

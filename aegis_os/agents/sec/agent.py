@@ -42,7 +42,7 @@ class AegisSec(BaseAgent):
     - Produces a structured SecurityReport with severity and remediation.
     RBAC: Strictly read-only. No write, no shell execution, no commits.
     """
-    def __init__(self,workspace_root: Path,llm_provider: str="openai",llm_model: Optional[str]=None,max_steps: int = 20,state_machine: Optional[StateMachine] = None,):
+    def __init__(self,workspace_root: Path,llm_provider: str="groq",llm_model: Optional[str]=None,max_steps: int = 20,state_machine: Optional[StateMachine] = None,):
         registry=ToolRegistry()
         registry.register(ReadFileTool(workspace_root))
         registry.register(ListDirTool(workspace_root))
