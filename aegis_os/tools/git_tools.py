@@ -83,8 +83,8 @@ class GitCommitTool(BaseAegisTool):
     """Stage and commit changes to the git repository."""
     name:str="git_commit"
     description=(
-        "Stage modified files and create a git commit. "
-        "Set add_all=True to stage all modified tracked files automatically."
+        "Stage modified and newly created files and create a git commit. "
+        "Set add_all=True to stage all changes automatically."
     )
     args_schema=GitCommitArgs
 
@@ -93,10 +93,10 @@ class GitCommitTool(BaseAegisTool):
         cwd = Path(args.cwd) if args.cwd else None
 
         if args.add_all:
-            add_result = _sandbox.execute_command("git add -u", cwd=cwd, quota=_quota)
+            add_result = _sandbox.execute_command("git add -A", cwd=cwd, quota=_quota)
             if add_result.exit_code != 0:
                 return ToolResult.fail(
-                    error=f"git add -u failed: {add_result.stderr}"
+                    error=f"git add -A failed: {add_result.stderr}"
                 )
 
         safe_message=args.message.replace('"','\\"')
