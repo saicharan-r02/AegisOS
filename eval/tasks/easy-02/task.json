@@ -1,0 +1,5 @@
+{
+  "id": "easy-02",
+  "category": "bugfix",
+  "goal": "Fix the bug in `calculator.py`. The `multiply` function currently adds instead of multiplying."
+}

@@ -1,0 +1,5 @@
+{
+  "id": "easy-04",
+  "category": "feature",
+  "goal": "In `string_utils.py`, implement `reverse_string(s: str) -> str` that returns the reversed string."
+}

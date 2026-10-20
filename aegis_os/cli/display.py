@@ -125,8 +125,6 @@ class AegisDisplay:
             f_table.add_column("Severity",justify="center",width=10)
             f_table.add_column("Category",style="cyan",width=18)
             f_table.add_column("Location",style="yellow",width=20)
-            f_table.add_column("Description",style="white")
-            f_table.add_column("Remediation",style="green")
 
             for f in report.findings:
                 sev_style="bold red" if f.severity in ("CRITICAL","HIGH") else "yellow"
@@ -136,10 +134,18 @@ class AegisDisplay:
                     f"[{sev_style}]{f.severity}[/{sev_style}]",
                     f.category,
                     loc,
-                    f.description,
-                    f.remediation,
                 )
             self.console.print(f_table)
+
+            for finding in report.findings:
+                details = Text()
+                details.append("Description: ", style="bold white")
+                details.append(finding.description)
+                details.append("\nRemediation: ", style="bold green")
+                details.append(finding.remediation)
+                self.console.print(
+                    Panel(details, title=finding.id, border_style="red", expand=True)
+                )
 
     def show_repair_cycle(self,record: RepairCycleRecord) -> None:
         status_text="[bold green]RESOLVED[/bold green]" if record.resolved else "[bold yellow]IN PROGRESS[/bold yellow]"

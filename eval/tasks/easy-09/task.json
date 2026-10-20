@@ -1,0 +1,5 @@
+{
+  "id": "easy-09",
+  "category": "bugfix",
+  "goal": "Fix `split_csv_line` in `csv_utils.py`. It naively splits by comma, which breaks when commas appear inside quotes. Return a list of parsed string fields."
+}

@@ -1,0 +1,5 @@
+{
+  "id": "easy-10",
+  "category": "bugfix",
+  "goal": "Fix `is_leap_year` in `calendar_utils.py`. It currently checks `year % 4 == 0`, failing on century years (e.g. 1900 is not a leap year, 2000 is a leap year)."
+}

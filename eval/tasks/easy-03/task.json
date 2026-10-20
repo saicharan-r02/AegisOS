@@ -1,0 +1,5 @@
+{
+  "id": "easy-03",
+  "category": "bugfix",
+  "goal": "Fix the 1-indexed pagination calculation in `pagination.py`. Currently it miscalculates page boundaries."
+}

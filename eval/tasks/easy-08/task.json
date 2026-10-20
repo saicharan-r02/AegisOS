@@ -1,0 +1,5 @@
+{
+  "id": "easy-08",
+  "category": "feature",
+  "goal": "In `slugify.py`, implement `slugify(text: str) -> str` that converts a string to a URL-friendly slug: lowercase, removes punctuation/special characters, replaces spaces and underscores with hyphens, and strips leading/trailing hyphens."
+}

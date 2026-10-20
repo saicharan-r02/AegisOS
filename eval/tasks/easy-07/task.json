@@ -1,0 +1,5 @@
+{
+  "id": "easy-07",
+  "category": "bugfix",
+  "goal": "Fix `merge_dicts` in `dict_utils.py`. It currently performs a shallow update that overwrites nested dictionaries instead of deeply and recursively merging them."
+}

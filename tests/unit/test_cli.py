@@ -147,6 +147,35 @@ class TestAegisDisplay:
         assert "SEC-001" in output
         assert "HIGH" in output
         assert "SQL injection" in output
+        assert "Use bound parameters" in output
+
+    def test_show_sec_report_preserves_long_finding_details(self) -> None:
+        buf=StringIO()
+        console=Console(file=buf,force_terminal=True,width=64)
+        display=AegisDisplay(console=console)
+        report=SecurityReport(
+            audit_target="aegis_os/",
+            findings=[
+                SecurityFinding(
+                    id="SEC-002",
+                    severity="MEDIUM",
+                    category="Configuration",
+                    file="settings.py",
+                    line=42,
+                    description="A detailed finding description that must remain visible in a narrow terminal.",
+                    remediation="Apply the complete remediation guidance without losing its ending.",
+                )
+            ],
+            summary=SecuritySummary(medium=1),
+        )
+
+        display.show_sec_report(report)
+
+        output=" ".join(buf.getvalue().split())
+        assert "must remain visible in a" in output
+        assert "narrow terminal." in output
+        assert "without losing its" in output
+        assert "ending." in output
 
     def test_show_repair_cycle(self,string_console) -> None:
         console,buf=string_console

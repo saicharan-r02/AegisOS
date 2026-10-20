@@ -1,0 +1,5 @@
+{
+  "id": "easy-05",
+  "category": "feature",
+  "goal": "In `palindrome.py`, implement `is_palindrome(s: str) -> bool` that checks if a string is a palindrome, ignoring non-alphanumeric characters and case."
+}
