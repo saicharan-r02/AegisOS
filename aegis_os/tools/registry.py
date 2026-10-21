@@ -44,6 +44,11 @@ class ToolRegistry:
             )
         return self._tools[name]
 
+    def call(self, name: str, **kwargs: Any) -> ToolResult:
+        """Convenience method to execute a registered tool by name with keyword arguments."""
+        tool = self.get(name)
+        return tool.run(kwargs)
+
     def list_tools(self) -> list[BaseAegisTool]:
         """Return all registered tool instances."""
         return list(self._tools.values())

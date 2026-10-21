@@ -42,6 +42,10 @@ def build_parser() -> argparse.ArgumentParser:
     run_p.add_argument("--max-wall-seconds",type=float,default=None,help="Mission wall-clock budget (defaults to aegis.toml)")
     run_p.add_argument("--unsafe-local",action="store_true",help="Use host subprocess mode instead of Docker; command policy still applies.")
     run_p.add_argument("--strategy",type=str,default="adaptive",choices=["adaptive","waterfall"],help="Mission execution strategy: adaptive (DAG supervisor) or waterfall (legacy pipeline)")
+    run_p.add_argument("--mode",type=str,default="auto",choices=["plan","supervised","auto"],help="Autonomy mode: plan (pause after DAG), supervised (confirm risky actions), auto (bounded by policy)")
+    run_p.add_argument("--issue",type=str,default=None,help="GitHub issue URL to ingest objective from (e.g. https://github.com/org/repo/issues/42)")
+    run_p.add_argument("--headless",action="store_true",help="Run in headless non-interactive mode")
+    run_p.add_argument("--json",dest="json_output",action="store_true",help="Emit machine-readable JSON summary upon completion")
     run_p.add_argument("--db-path",type=str,default=".aegis/checkpoints.db",help="Path to SQLite checkpoint database")
 
     audit_p=subparsers.add_parser("audit",help="Run OWASP security audit and ops sanity checks")
@@ -87,6 +91,15 @@ def build_parser() -> argparse.ArgumentParser:
     server_p.add_argument("--host",type=str,default="127.0.0.1",help="Host IP to bind to")
     server_p.add_argument("--port",type=int,default=8000,help="Port to run on")
     server_p.add_argument("--db-path",type=str,default=".aegis/checkpoints.db",help="Path to SQLite checkpoint database")
+
+    chat_p = subparsers.add_parser("chat",help="Start interactive pairing shell with codebase tools")
+    chat_p.add_argument("-w","--workspace",type=str,default=".",help="Target workspace root")
+    chat_p.add_argument("-p","--provider",type=str,default=None,help="LLM provider override")
+    chat_p.add_argument("-m","--model",type=str,default=None,help="Model identifier override")
+
+    config_p = subparsers.add_parser("config",help="Validate and inspect aegis configuration")
+    config_p.add_argument("command",choices=["check"],help="Config command (check)")
+    config_p.add_argument("-c","--config",type=str,default="aegis.toml",help="Path to config file")
 
     return parser
 
@@ -333,6 +346,29 @@ def handle_benchmark(args: argparse.Namespace, display: AegisDisplay) -> int:
     return 0 if report.pass_rate == 100.0 else 1
 
 
+def handle_chat(args: argparse.Namespace, display: AegisDisplay) -> int:
+    """Launch interactive pairing session."""
+    from aegis_os.cli.chat import AegisChatSession
+    session = AegisChatSession(workspace_root=args.workspace, provider=args.provider, model=args.model)
+    return session.run_interactive_loop()
+
+
+def handle_config(args: argparse.Namespace, display: AegisDisplay) -> int:
+    """Validate aegis.toml configuration file."""
+    from aegis_os.config.validator import validate_config_file
+    is_valid, messages = validate_config_file(args.config)
+    if is_valid:
+        display.console.print(f"[bold green]✔ Configuration Check Passed:[/bold green] {args.config}")
+        for msg in messages:
+            display.console.print(f"  • {msg}")
+        return 0
+    else:
+        display.console.print(f"[bold red]✘ Configuration Check Failed:[/bold red] {args.config}")
+        for err in messages:
+            display.console.print(f"  [red]• {err}[/red]")
+        return 1
+
+
 def handle_server(args: argparse.Namespace, display: AegisDisplay) -> int:
     """Launch the FastAPI server."""
     db = Path(args.db_path)
@@ -378,6 +414,10 @@ def main(argv: list[str] | None = None) -> int:
         return handle_benchmark(args,display)
     elif args.subcommand=="server":
         return handle_server(args,display)
+    elif args.subcommand=="chat":
+        return handle_chat(args,display)
+    elif args.subcommand=="config":
+        return handle_config(args,display)
     return 0
 
 if __name__=="__main__":

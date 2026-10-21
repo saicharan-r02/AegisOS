@@ -99,6 +99,18 @@ AegisOS is being transformed from a prototype ReAct multi-agent pipeline into an
   4. **Hardened Mission Control API:** Added token authentication (`X-Aegis-Token`), sliding-window rate limiting, approvals inbox (`/api/approvals`), live mission control (`pause`, `resume`, `cancel`), cumulative git diff (`/api/missions/{id}/diff`), and WebSocket event replay via `last_event_id`.
   5. **War Room Dashboard:** Upgraded React + TypeScript dashboard with live approvals inbox, interactive diff modal, trace span viewer, acceptance criteria checklist, and memory browser.
 
+## ADR 0010: Human-In-The-Loop Autonomy Modes, GitHub PR Workflows, Config Validation, and MCP Tooling
+- **Status:** Accepted
+- **Date:** 2026-10-21
+- **Context:** Everyday software engineering requires configurable autonomy gates (reviewing plans before execution, approving sensitive actions), native GitHub issue/PR flows, validated project configuration, and external tool integration via MCP.
+- **Decisions:**
+  1. **Autonomy Modes:** Implemented `ModeController` supporting `--mode plan` (pauses after CTO produces plan DAG), `--mode supervised` (prompts human for destructive actions or halts in headless), and `--mode auto` (bounded by deterministic code policy).
+  2. **Interactive Pairing Shell:** Added `aegis chat` providing an interactive REPL with real-time codebase search, repository mapping, and tool inspection.
+  3. **GitHub Issue & Pull Request Integration:** `GitHubIntegration` parses issue URLs, retrieves issue descriptions, and drafts comprehensive PR markdown bodies featuring acceptance-criteria evidence, pass/fail test statistics, and mission cost accounting.
+  4. **Strict Configuration Validation:** `aegis config check` and `AegisTomlSchema` validate `aegis.toml` syntax, role overrides, and budget constraints.
+  5. **Model Context Protocol (MCP) & Plugin Engine:** `MCPClient` connects to external tool servers, wrapping tools in `MCPToolWrapper` which enforces `CommandPolicy` before external tool invocation, preventing safety policy bypasses.
+
+
 
 
 
