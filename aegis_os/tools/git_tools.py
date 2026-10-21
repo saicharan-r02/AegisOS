@@ -1,14 +1,15 @@
-from typing import Optional
-from pydantic import BaseModel,Field
-from aegis_os.sandbox.subprocess_sandbox import SubprocessSandbox
+
+from pydantic import BaseModel, Field
+
 from aegis_os.sandbox.quotas import ExecutionQuota
+from aegis_os.sandbox.subprocess_sandbox import SubprocessSandbox
 from aegis_os.tools.base import BaseAegisTool, ToolResult
 
 _sandbox=SubprocessSandbox()
 _quota=ExecutionQuota(timeout_seconds=30.0)
 
 class GitStatusArgs(BaseModel):
-    cwd: Optional[str]=Field(
+    cwd: str | None=Field(
         default=None,
         description="Path to git repository. Defaults to current directory."
     )
@@ -16,6 +17,7 @@ class GitStatusArgs(BaseModel):
 class GitStatusTool(BaseAegisTool):
     """Get the current git status of the repository."""
     name="git_status"
+    parallel_safe = True
     description="Get current git status showing staged, unstaged, and untracked files."
     args_schema=GitStatusArgs
 
@@ -38,15 +40,16 @@ class GitDiffArgs(BaseModel):
         default=False,
         description="If True, show diff of staged changes. Otherwise shows unstaged diff."
     )
-    file_path: Optional[str]=Field(
+    file_path: str | None=Field(
         default=None,
         description="Limit diff to a specific file path."
     )
-    cwd: Optional[str]=Field(default=None,description="Path to git repository.")
+    cwd: str | None=Field(default=None,description="Path to git repository.")
 
 class GitDiffTool(BaseAegisTool):
     """Get the diff of current changes in the repository."""
     name="git_diff"
+    parallel_safe = True
     description="Show unified diff of changes in the repository. Use staged=True to see staged changes."
     args_schema=GitDiffArgs
 
@@ -76,7 +79,7 @@ class GitCommitArgs(BaseModel):
         default=False,
         description="If True, stage all tracked modified files before committing (git add -u)."
     )
-    cwd: Optional[str]=Field(default=None,description="Path to git repository.")
+    cwd: str | None=Field(default=None,description="Path to git repository.")
 
 
 class GitCommitTool(BaseAegisTool):

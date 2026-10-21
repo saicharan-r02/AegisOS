@@ -2,8 +2,11 @@
 
 **Date:** 2026-10-19  
 **Branch:** `aegis-v2`  
+**Baseline snapshot commit:** `9dc03b2`
 **Auditor:** Senior Staff Engineer & AI-Agent Architect  
 **Objective:** Comprehensive architectural review, data-flow mapping, test fidelity assessment, and vulnerability inventory of the AegisOS codebase prior to Phase 1-11 upgrades.
+
+The file and line references below describe the Phase 0 snapshot at commit `9dc03b2`. Later phase commits may move those line numbers; the commit preserves the audited source revision.
 
 ---
 

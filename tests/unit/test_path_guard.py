@@ -1,6 +1,9 @@
-import pytest
 from pathlib import Path
-from aegis_os.sandbox.path_guard import PathTraversalError,validate_path
+
+import pytest
+
+from aegis_os.sandbox.path_guard import PathTraversalError, validate_path
+
 
 class TestValidPathsAreAccepted:
     """Valid paths within the workspace must resolve cleanly."""

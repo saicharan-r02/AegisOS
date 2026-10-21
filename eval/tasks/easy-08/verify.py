@@ -1,4 +1,5 @@
 import sys
+
 try:
     from slugify import slugify
     assert slugify("Hello World!") == "hello-world", f"Got: {slugify('Hello World!')}"

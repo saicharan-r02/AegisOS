@@ -1,6 +1,8 @@
-from abc import ABC,abstractmethod
-from typing import Any,Optional
-from pydantic import BaseModel,Field,ValidationError
+from abc import ABC, abstractmethod
+from typing import Any
+
+from pydantic import BaseModel, Field, ValidationError
+
 
 class ToolResult(BaseModel):
     """
@@ -13,7 +15,7 @@ class ToolResult(BaseModel):
         default="",
         description="Human-readable output for the agent to reason about.",
     )
-    error: Optional[str]=Field(
+    error: str | None=Field(
         default=None,
         description="Structured error message if success=False. None if success=True.",
     )
@@ -23,12 +25,12 @@ class ToolResult(BaseModel):
     )
 
     @classmethod
-    def ok(cls,output: str,metadata: Optional[dict[str, Any]] = None) -> "ToolResult":
+    def ok(cls,output: str,metadata: dict[str, Any] | None = None) -> "ToolResult":
         """Convenience constructor for successful results."""
         return cls(success=True, output=output, metadata=metadata or {})
 
     @classmethod
-    def fail(cls,error: str,metadata: Optional[dict[str, Any]] = None) -> "ToolResult":
+    def fail(cls,error: str,metadata: dict[str, Any] | None = None) -> "ToolResult":
         """Convenience constructor for failure results."""
         return cls(success=False, output="", error=error, metadata=metadata or {})
 
@@ -48,6 +50,7 @@ class BaseAegisTool(ABC):
     name: str
     description: str
     args_schema: type[BaseModel]
+    parallel_safe: bool = False
 
     def run(self,raw_args: dict[str,Any]) -> ToolResult:
         """
@@ -65,7 +68,7 @@ class BaseAegisTool(ABC):
         except ValidationError as exc:
             # Format Pydantic validation errors into actionable agent feedback
             error_details ="; ".join(
-                f"Field '{'.'.join(str(l) for l in e['loc'])}': {e['msg']}"
+                f"Field '{'.'.join(str(location) for location in e['loc'])}': {e['msg']}"
                 for e in exc.errors()
             )
             return ToolResult.fail(
@@ -89,7 +92,7 @@ class BaseAegisTool(ABC):
             )
 
     @abstractmethod
-    def _execute(self, args: BaseModel) -> ToolResult:
+    def _execute(self, args: Any) -> ToolResult:
         """
         Core implementation logic. Called only through `run()`.
         Args:

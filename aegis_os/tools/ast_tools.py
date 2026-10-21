@@ -1,8 +1,10 @@
 import ast
 import os
-from typing import List,Optional
-from pydantic import BaseModel,Field
-from aegis_os.tools.base import BaseAegisTool,ToolResult
+
+from pydantic import BaseModel, Field
+
+from aegis_os.tools.base import BaseAegisTool, ToolResult
+
 
 class ASTGrepArgs(BaseModel):
     symbol_name: str=Field(
@@ -11,7 +13,7 @@ class ASTGrepArgs(BaseModel):
     search_path: str=Field(
         description="Directory or file to search. Searches recursively for directories."
     )
-    symbol_type: Optional[str]=Field(
+    symbol_type: str | None=Field(
         default=None,
         description="Type of symbol: 'function','class',or None for both.",
     )
@@ -28,10 +30,10 @@ class _ASTMatch:
         return f"{self.file}:{self.line} [{self.kind}] {self.qualified}"
 
 
-def _grep_file(filepath: str,symbol_name: str,symbol_type: Optional[str]) -> List[_ASTMatch]:
-    matches: List[_ASTMatch]=[]
+def _grep_file(filepath: str,symbol_name: str,symbol_type: str | None) -> list[_ASTMatch]:
+    matches: list[_ASTMatch]=[]
     try:
-        with open(filepath,"r",encoding="utf-8",errors="ignore") as f:
+        with open(filepath,encoding="utf-8",errors="ignore") as f:
             source=f.read()
         tree=ast.parse(source,filename=filepath)
     except (SyntaxError,OSError):
@@ -57,7 +59,7 @@ def _grep_file(filepath: str,symbol_name: str,symbol_type: Optional[str]) -> Lis
     return matches
 
 
-def _find_parent_class(tree: ast.AST, target_node: ast.AST) -> Optional[str]:
+def _find_parent_class(tree: ast.AST, target_node: ast.AST) -> str | None:
     """Walk the tree and find the immediate parent ClassDef of the target node."""
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef):
@@ -74,6 +76,7 @@ class ASTGrepTool(BaseAegisTool):
     contents into context — safe for large codebases.
     """
     name="ast_grep"
+    parallel_safe = True
     description=(
         "Search Python source files for function or class definitions by name using "
         "AST parsing. Returns file path and line number without reading file contents. "
@@ -83,7 +86,7 @@ class ASTGrepTool(BaseAegisTool):
 
     def _execute(self, args: ASTGrepArgs) -> ToolResult:
         search_path=args.search_path
-        all_matches: List[_ASTMatch]=[]
+        all_matches: list[_ASTMatch]=[]
 
         if os.path.isfile(search_path):
             python_files=[search_path]

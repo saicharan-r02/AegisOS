@@ -1,10 +1,13 @@
-from datetime import datetime, timezone
-from enum import Enum
-from typing import Any,Optional
 import uuid
-from pydantic import BaseModel,ConfigDict,Field
+from datetime import UTC, datetime
+from enum import Enum
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field
+
 from aegis_os.kernel.exceptions import CycleDetectedError
 from aegis_os.tools.base import ToolResult
+
 
 class MissionStatus(str,Enum):
     """Lifecycle status of a complete engineering mission."""
@@ -42,19 +45,19 @@ class StepRecord(BaseModel):
     step_index: int = Field(ge=1,description="1-indexed sequence number of this step.")
     role: AgentRole = Field(description="Role of the agent that executed this step.")
     task_description: str = Field(description="Human-readable explanation of intent.")
-    tool_name: Optional[str] = Field(default=None,description="Tool called during this step, if any.")
+    tool_name: str | None = Field(default=None,description="Tool called during this step, if any.")
     tool_args: dict[str, Any] = Field(default_factory=dict,description="Raw arguments passed to the tool.")
-    tool_result: Optional[ToolResult] = Field(default=None,description="Result returned by the tool, if called.")
+    tool_result: ToolResult | None = Field(default=None,description="Result returned by the tool, if called.")
     status: StepStatus = Field(default=StepStatus.PENDING)
-    started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    finished_at: Optional[datetime] = None
-    duration_ms: Optional[float] = None
-    error: Optional[str] = None
+    started_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    finished_at: datetime | None = None
+    duration_ms: float | None = None
+    error: str | None = None
     metadata: dict[str, Any]=Field(default_factory=dict)
 
-    def complete(self,tool_result: Optional[ToolResult] = None,error: Optional[str] = None,status: Optional[StepStatus] = None) -> None:
+    def complete(self,tool_result: ToolResult | None = None,error: str | None = None,status: StepStatus | None = None) -> None:
         """Mark this step as completed and calculate elapsed duration."""
-        self.finished_at=datetime.now(timezone.utc)
+        self.finished_at=datetime.now(UTC)
         if self.started_at:
             delta=self.finished_at-self.started_at
             self.duration_ms=round(delta.total_seconds()*1000.0,2)
@@ -85,10 +88,16 @@ class AgentState(BaseModel):
     mission_goal: str=Field(description="Primary objective defined for this mission.")
     status: MissionStatus=Field(default=MissionStatus.PENDING)
     current_step_index: int=Field(default=0,ge=0)
-    active_role: Optional[AgentRole]=None
+    active_role: AgentRole | None=None
     step_history: list[StepRecord]=Field(default_factory=list)
     context_variables: dict[str, Any]=Field(default_factory=dict,description="Shared epistemic memory across agents (e.g. file lists, test reports).")
     max_steps: int=Field(default=50,ge=1,description="Hard limit on total execution steps.")
+    max_tokens: int=Field(default=200_000,ge=1)
+    tokens_used: int=Field(default=0,ge=0)
+    max_cost_usd: float | None=Field(default=2.0,ge=0)
+    cost_used_usd: float=Field(default=0.0,ge=0)
+    max_wall_seconds: float | None=Field(default=1800.0,ge=0)
+    started_at: datetime=Field(default_factory=lambda: datetime.now(UTC))
     consecutive_failures: int=Field(default=0,ge=0,description="Consecutive failed steps.")
     stagnation_threshold: int=Field(default=3,ge=1,description="Max consecutive failures before halt.")
 
@@ -97,7 +106,19 @@ class AgentState(BaseModel):
         """True if the mission has reached an end state."""
         return self.status in (MissionStatus.COMPLETED,MissionStatus.FAILED,MissionStatus.ABORTED)
 
-    def add_step(self,role: AgentRole,task_description: str,tool_name: Optional[str] = None,tool_args: Optional[dict[str, Any]] = None) -> StepRecord:
+    def budget_limit_reason(self, prompt_tokens: int = 0, completion_reserve: int = 0) -> str | None:
+        """Return a graceful stop reason when a configured mission budget is exhausted."""
+        if self.tokens_used + prompt_tokens + completion_reserve > self.max_tokens:
+            return f"Token budget exhausted ({self.tokens_used}/{self.max_tokens} tokens used)."
+        if self.max_cost_usd is not None and self.cost_used_usd >= self.max_cost_usd:
+            return f"Cost budget exhausted (${self.cost_used_usd:.4f}/${self.max_cost_usd:.4f})."
+        if self.max_wall_seconds is not None:
+            elapsed=(datetime.now(UTC)-self.started_at).total_seconds()
+            if elapsed >= self.max_wall_seconds:
+                return f"Wall-clock budget exhausted ({elapsed:.1f}/{self.max_wall_seconds:.1f} seconds)."
+        return None
+
+    def add_step(self,role: AgentRole,task_description: str,tool_name: str | None = None,tool_args: dict[str, Any] | None = None) -> StepRecord:
         """Create, append, and return a new active step record."""
         self.current_step_index+=1
         self.active_role=role
@@ -112,7 +133,7 @@ class AgentState(BaseModel):
         self.step_history.append(step)
         return step
 
-    def complete_current_step(self,tool_result: Optional[ToolResult] = None,error: Optional[str] = None,status: Optional[StepStatus] = None) -> StepRecord:
+    def complete_current_step(self,tool_result: ToolResult | None = None,error: str | None = None,status: StepStatus | None = None) -> StepRecord:
         """Complete the most recent active step and update failure counters."""
         last_step=self.get_last_step()
         if not last_step:
@@ -124,11 +145,11 @@ class AgentState(BaseModel):
             self.consecutive_failures+=1
         return last_step
 
-    def get_last_step(self) -> Optional[StepRecord]:
+    def get_last_step(self) -> StepRecord | None:
         """Return the most recent step, or None if no steps have executed."""
         return self.step_history[-1] if self.step_history else None
 
-    def get_last_successful_step(self) -> Optional[StepRecord]:
+    def get_last_successful_step(self) -> StepRecord | None:
         """Return the most recent successful step, if any."""
         for step in reversed(self.step_history):
             if step.status==StepStatus.SUCCESS:
@@ -255,9 +276,6 @@ class MissionDAG(BaseModel):
 
         return sorted_nodes
 
-from enum import Enum
-from typing import List,Optional,Any
-from pydantic import BaseModel,ConfigDict,Field
 class MissionPhase(str, Enum):
     """Execution lifecycle phases of a multi-department mission."""
     PLANNING="PLANNING"
@@ -278,8 +296,8 @@ class RepairCycleRecord(BaseModel):
 
     cycle_index:int=Field(description="1-indexed cycle number.")
     trigger:str=Field(description="Trigger reason, e.g. QA_FAILURES, SECURITY_VULNERABILITIES, HYBRID")
-    issues_detected:List[str]=Field(default_factory=list,description="List of specific failure descriptions.")
-    dev_patch_summary:Optional[str]=Field(default=None,description="Summary of changes applied by AegisDev.")
+    issues_detected:list[str]=Field(default_factory=list,description="List of specific failure descriptions.")
+    dev_patch_summary:str | None=Field(default=None,description="Summary of changes applied by AegisDev.")
     resolved:bool=Field(default=False,description="Whether this repair was verified resolved in subsequent checks.")
 
 class MissionSummary(BaseModel):
@@ -292,13 +310,15 @@ class MissionSummary(BaseModel):
     session_id:str
     goal:str
     status:MissionStatus
-    plan:Optional[Any]=None
+    plan:Any | None=None
     total_steps:int=Field(default=0,ge=0)
-    tasks_executed:List[str]=Field(default_factory=list)
+    tasks_executed:list[str]=Field(default_factory=list)
     repair_cycles:int=Field(default=0,ge=0)
-    repair_history:List[RepairCycleRecord]=Field(default_factory=list)
-    qa_report:Optional[Any]=None
-    sec_report:Optional[Any]=None
-    ops_report:Optional[str]=None
+    repair_history:list[RepairCycleRecord]=Field(default_factory=list)
+    qa_report:Any | None=None
+    sec_report:Any | None=None
+    ops_report:str | None=None
     duration_seconds:float=Field(default=0.0,ge=0.0)
-    error:Optional[str]=None
+    tokens_used:int=Field(default=0,ge=0)
+    cost_used_usd:float=Field(default=0.0,ge=0)
+    error:str | None=None

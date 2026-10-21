@@ -4,8 +4,8 @@ import shlex
 import signal
 import subprocess
 from pathlib import Path
-from typing import Optional
-from aegis_os.sandbox.base import CommandResult,SandboxExecutor
+
+from aegis_os.sandbox.base import CommandResult, SandboxExecutor
 from aegis_os.sandbox.quotas import ExecutionQuota
 
 _DEFAULT_QUOTA=ExecutionQuota()
@@ -26,8 +26,13 @@ def _kill_process_tree(pid: int) -> None:
         if _IS_WINDOWS:
             subprocess.run(["taskkill","/F","/T","/PID",str(pid)],capture_output=True,check=False)
         else:
-            pgid=os.getpgid(pid)
-            os.killpg(pgid,signal.SIGKILL)
+            getpgid=getattr(os,"getpgid",None)
+            killpg=getattr(os,"killpg",None)
+            sigkill=getattr(signal,"SIGKILL",signal.SIGTERM)
+            if callable(getpgid) and callable(killpg):
+                killpg(getpgid(pid),sigkill)
+            else:
+                os.kill(pid,sigkill)
     except(ProcessLookupError,OSError):
         pass
 
@@ -51,10 +56,10 @@ class SubprocessSandbox(SandboxExecutor):
     and structured result encoding (never raises on subprocess failure).
     """
 
-    def execute_command(self,command:str,cwd:Optional[Path]=None,quota:Optional[ExecutionQuota]=None,) -> CommandResult:
+    def execute_command(self,command:str,cwd:Path | None=None,quota:ExecutionQuota | None=None,) -> CommandResult:
         """
         Execute a shell command with full resource quota enforcement.
-        Args: 
+        Args:
             command: Shell command string (passed to shell=True on Windows,
                      or split and run directly on POSIX).
             cwd:     Working directory. If None, inherits from parent process.
@@ -64,7 +69,7 @@ class SubprocessSandbox(SandboxExecutor):
         """
         active_quota=quota or _DEFAULT_QUOTA
         cwd_path=str(cwd)if cwd else None
-        
+
         kwargs:dict= {
             "stdout":subprocess.PIPE,
             "stderr":subprocess.PIPE,

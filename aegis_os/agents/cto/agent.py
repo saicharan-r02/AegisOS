@@ -1,18 +1,21 @@
 import json
 import re
 from pathlib import Path
-from typing import Any,Dict,List,Optional
-from langchain_core.messages import HumanMessage,SystemMessage
-from pydantic import BaseModel,Field
+
+from langchain_core.messages import HumanMessage, SystemMessage
+from pydantic import BaseModel, Field
+
 from aegis_os.agents.base_agent import BaseAgent, _first_json
 from aegis_os.agents.cto.prompts import SYSTEM_PROMPT
 from aegis_os.kernel.llm import get_llm
 from aegis_os.kernel.state import AgentRole
 from aegis_os.kernel.state_machine import StateMachine
 from aegis_os.tools.ast_tools import ASTGrepTool
+from aegis_os.tools.codebase_tools import FileOutlineTool, FindReferencesTool
 from aegis_os.tools.filesystem_tools import ReadFileTool
 from aegis_os.tools.git_tools import GitStatusTool
 from aegis_os.tools.registry import ToolRegistry
+
 
 class MissionTask(BaseModel):
     """A single atomic task assigned to an engineering department."""
@@ -20,16 +23,16 @@ class MissionTask(BaseModel):
     title: str
     description: str
     assigned_to: str = Field(description="AegisDev | AegisQA | AegisSec | AegisOps")
-    depends_on: List[str] = Field(default_factory=list)
+    depends_on: list[str] = Field(default_factory=list)
     priority: str = Field(default="MEDIUM")
-    acceptance_criteria: List[str] = Field(default_factory=list)
+    acceptance_criteria: list[str] = Field(default_factory=list)
 
 class MissionPlan(BaseModel):
     """Structured engineering plan produced by AegisCTO."""
     mission_title: str
     objective: str
-    tasks: List[MissionTask]
-    risk_flags: List[str] = Field(default_factory=list)
+    tasks: list[MissionTask]
+    risk_flags: list[str] = Field(default_factory=list)
 
 class AegisCTO(BaseAgent):
     """
@@ -42,15 +45,17 @@ class AegisCTO(BaseAgent):
     RBAC: Write tools are intentionally excluded.
     """
 
-    def __init__(self,workspace_root: Optional[Path] = None,llm_provider: str = "groq",llm_model: Optional[str] = None,max_steps: int = 15,state_machine: Optional[StateMachine] = None):
+    def __init__(self,workspace_root: Path | None = None,llm_provider: str | None = None,llm_model: str | None = None,max_steps: int = 15,state_machine: StateMachine | None = None):
         ws_root=Path(workspace_root) if workspace_root else Path.cwd()
         registry=ToolRegistry()
         # CTO is intentionally restricted to read-only tools for reconnaissance and planning.
         registry.register(ASTGrepTool())
+        registry.register(FileOutlineTool(ws_root))
+        registry.register(FindReferencesTool(ws_root))
         registry.register(GitStatusTool())
         registry.register(ReadFileTool(ws_root))
 
-        llm=get_llm(provider=llm_provider,model_name=llm_model)
+        llm=get_llm(provider=llm_provider,model_name=llm_model,role=AgentRole.CTO,workspace_root=ws_root)
 
         super().__init__(
             name="AegisCTO",

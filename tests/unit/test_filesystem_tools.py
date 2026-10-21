@@ -1,5 +1,5 @@
 from pathlib import Path
-import pytest
+
 from aegis_os.tools.filesystem_tools import (
     FindFilesTool,
     GrepSearchTool,
@@ -8,6 +8,7 @@ from aegis_os.tools.filesystem_tools import (
     ReplaceInFileTool,
     WriteFileTool,
 )
+
 
 class TestReadFileTool:
     """ReadFileTool tests for line numbering, slicing, and security."""

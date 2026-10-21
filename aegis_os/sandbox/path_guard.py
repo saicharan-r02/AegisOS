@@ -1,4 +1,6 @@
 from pathlib import Path
+
+
 class PathTraversalError(PermissionError):
     """
     Raised when a requested path resolves to a location outside the

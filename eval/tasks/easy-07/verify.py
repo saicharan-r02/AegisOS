@@ -1,4 +1,5 @@
 import sys
+
 try:
     from dict_utils import merge_dicts
     base = {"a": 1, "b": {"x": 10, "y": 20}}

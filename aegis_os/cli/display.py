@@ -1,18 +1,30 @@
 import sys
-from typing import Any,Callable,List,Optional
-from rich.console import Console,Group
+from collections.abc import Callable
+from typing import Any
+
+from rich.console import Console, Group
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 from rich.tree import Tree
+
 from aegis_os.agents.cto.agent import MissionPlan
 from aegis_os.agents.qa.agent import TestReport
 from aegis_os.agents.sec.agent import SecurityReport
-from aegis_os.kernel.events import KernelEvent,MissionStatusChangedEvent,StateTransitionEvent,StepCompletedEvent,StepStartedEvent
-from aegis_os.kernel.state import MissionStatus,StepRecord,StepStatus
-from aegis_os.kernel.state import MissionSummary,RepairCycleRecord
-from typing import Any
-
+from aegis_os.kernel.events import (
+    KernelEvent,
+    MissionStatusChangedEvent,
+    StateTransitionEvent,
+    StepCompletedEvent,
+    StepStartedEvent,
+)
+from aegis_os.kernel.state import (
+    MissionStatus,
+    MissionSummary,
+    RepairCycleRecord,
+    StepRecord,
+    StepStatus,
+)
 
 ROLE_COLORS={
     "CTO":"bold cyan",
@@ -36,7 +48,7 @@ class AegisDisplay:
     Rich visual presentation layer for AegisOS.
     Renders terminal banners, live telemetry streams, reports, and mission summaries.
     """
-    def __init__(self,console: Optional[Console] = None) -> None:
+    def __init__(self,console: Console | None = None) -> None:
         self.console=console or Console(highlight=False,force_terminal=True,force_jupyter=False,soft_wrap=True,file=open(sys.stdout.fileno(), mode='w', encoding='utf-8', buffering=1, closefd=False) if hasattr(sys.stdout,'fileno') else None)
 
     def show_banner(self) -> None:
@@ -107,7 +119,7 @@ class AegisDisplay:
 
     def show_sec_report(self,report: SecurityReport) -> None:
         s=report.summary
-        has_critical_or_high=(s.critical>0) or (s.high>0)
+        has_critical_or_high=bool(report.report_error) or (s.critical>0) or (s.high>0)
         border="red" if has_critical_or_high else "green"
 
         table=Table(title=f"AegisSec Security Audit: {report.audit_target}",border_style=border)
@@ -118,6 +130,15 @@ class AegisDisplay:
         table.add_column("Info",style="dim white",justify="center")
         table.add_row(str(s.critical),str(s.high),str(s.medium),str(s.low),str(s.info))
         self.console.print(table)
+
+        if report.report_error:
+            self.console.print(
+                Panel(
+                    Text(report.report_error,style="bold red"),
+                    title="Audit Report Error",
+                    border_style="red",
+                )
+            )
 
         if report.findings:
             f_table=Table(title="Security Vulnerabilities",border_style="red")
@@ -172,6 +193,8 @@ class AegisDisplay:
         text.append(f"Objective:        {summary.goal}\n",style="bold white")
         text.append(f"Duration:         {summary.duration_seconds:.2f}s\n",style="cyan")
         text.append(f"Total Steps:      {summary.total_steps}\n",style="cyan")
+        text.append(f"LLM Tokens:       {summary.tokens_used:,}\n",style="cyan")
+        text.append(f"Estimated Cost:   ${summary.cost_used_usd:.4f}\n",style="cyan")
         text.append(f"Tasks Executed:   {', '.join(summary.tasks_executed) if summary.tasks_executed else 'None'}\n",style="yellow")
         text.append(f"Repair Cycles:    {summary.repair_cycles}\n",style="magenta")
 
@@ -194,7 +217,7 @@ class AegisDisplay:
         border="green" if summary.status==MissionStatus.COMPLETED else "red"
         self.console.print(Panel(text,border_style=border,title=title))
 
-    def show_mission_list(self,missions: List[dict[str,Any]]) -> None:
+    def show_mission_list(self,missions: list[dict[str,Any]]) -> None:
         table=Table(title="AegisOS Past Mission Sessions",border_style="cyan")
         table.add_column("Session ID",style="bold white",width=36)
         table.add_column("Goal", style="yellow", width=30)
@@ -213,7 +236,7 @@ class AegisDisplay:
             )
         self.console.print(table)
 
-    def show_step_history(self, session_id: str, steps: List[StepRecord]) -> None:
+    def show_step_history(self, session_id: str, steps: list[StepRecord]) -> None:
         table = Table(title=f"Execution Step History for Session: {session_id}", border_style="blue")
         table.add_column("#", justify="center", width=4)
         table.add_column("Role", justify="center", width=8)
@@ -286,7 +309,7 @@ class AegisDisplay:
         for r in report.results:
             status_str = "[bold green]PASS[/bold green]" if r.passed else "[bold red]FAIL[/bold red]"
             p1_str = "[green]Yes[/green]" if r.pass_at_1 else "[dim]No[/dim]"
-            
+
             table.add_row(
                 r.task_id,
                 status_str,
@@ -295,12 +318,12 @@ class AegisDisplay:
                 str(r.total_steps),
                 f"{r.duration_sec:.1f}s"
             )
-        
+
         self.console.print(table)
-        
+
         summary_text = Text()
         summary_text.append(f"Total Tasks:  {report.total_tasks}\n", style="white")
         summary_text.append(f"Passed Tasks: {report.passed_tasks}\n", style="green")
         summary_text.append(f"Pass Rate:    {report.pass_rate:.1f}%\n", style="bold cyan")
-        
+
         self.console.print(Panel(summary_text, title="Benchmark Summary", border_style="cyan"))

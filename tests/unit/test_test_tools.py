@@ -1,6 +1,7 @@
 from pathlib import Path
-import pytest
-from aegis_os.tools.test_tools import PytestRunnerTool, PytestRunnerArgs
+
+from aegis_os.tools.test_tools import PytestRunnerArgs, PytestRunnerTool
+
 
 class TestPytestRunnerTool:
     def test_run_pytest_against_known_passing_test(self) -> None:
@@ -18,7 +19,7 @@ class TestPytestRunnerTool:
         assert result.metadata["exit_code"]==0
 
     def test_run_pytest_failing_test_parsed_correctly(self,tmp_path: Path) -> None:
-        
+
         test_file=tmp_path/"test_failing.py"
         test_file.write_text("def test_will_fail():\n    assert 1 == 2\n")
 

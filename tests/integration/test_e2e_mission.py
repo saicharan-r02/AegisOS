@@ -1,15 +1,17 @@
-from pathlib import Path
 import subprocess
+from pathlib import Path
 from unittest.mock import MagicMock
+
 import pytest
-from aegis_os.agents.cto.agent import AegisCTO,MissionPlan,MissionTask
+
+from aegis_os.agents.cto.agent import AegisCTO, MissionPlan, MissionTask
 from aegis_os.agents.dev.agent import AegisDev
 from aegis_os.agents.ops.agent import AegisOps
-from aegis_os.agents.qa.agent import AegisQA,TestFinding,TestReport
-from aegis_os.agents.sec.agent import AegisSec,SecurityReport,SecuritySummary
+from aegis_os.agents.qa.agent import AegisQA, TestFinding, TestReport
+from aegis_os.agents.sec.agent import AegisSec, SecurityReport, SecuritySummary
 from aegis_os.kernel.checkpoint import CheckpointStore
-from aegis_os.kernel.events import EventBus,KernelEvent
-from aegis_os.kernel.state import AgentRole,MissionStatus
+from aegis_os.kernel.events import EventBus, KernelEvent
+from aegis_os.kernel.state import AgentRole, MissionStatus
 from aegis_os.kernel.state_machine import MissionOrchestrator
 
 

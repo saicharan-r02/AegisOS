@@ -1,9 +1,11 @@
-from datetime import datetime,timezone
-from pathlib import Path
 import sqlite3
-from typing import Any,Optional
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
 from aegis_os.kernel.exceptions import CheckpointNotFoundError
-from aegis_os.kernel.state import AgentState,StepRecord
+from aegis_os.kernel.state import AgentState, StepRecord
+
 
 class CheckpointStore:
     """
@@ -66,7 +68,7 @@ class CheckpointStore:
         Persist mission state, step history, and a point-in-time snapshot.
         Returns the checkpoint ID.
         """
-        now_str=datetime.now(timezone.utc).isoformat()
+        now_str=datetime.now(UTC).isoformat()
         state_json=state.model_dump_json()
         with self._conn:
             self._conn.execute(
@@ -123,7 +125,7 @@ class CheckpointStore:
             )
             return cursor.lastrowid or 0
 
-    def load_latest_state(self, session_id: str) -> Optional[AgentState]:
+    def load_latest_state(self, session_id: str) -> AgentState | None:
         """Load the most recently saved state for a session."""
         cursor = self._conn.execute(
             "SELECT state_json FROM missions WHERE session_id = ?",
@@ -162,7 +164,7 @@ class CheckpointStore:
                 (session_id, target_step_index),
             )
 
-            now_str = datetime.now(timezone.utc).isoformat()
+            now_str = datetime.now(UTC).isoformat()
             self._conn.execute(
                 """
                 UPDATE missions

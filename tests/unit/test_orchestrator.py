@@ -1,14 +1,15 @@
 from unittest.mock import MagicMock
+
 import pytest
-from aegis_os.agents.cto.agent import AegisCTO,MissionPlan,MissionTask
+
+from aegis_os.agents.cto.agent import AegisCTO, MissionPlan, MissionTask
 from aegis_os.agents.dev.agent import AegisDev
 from aegis_os.agents.ops.agent import AegisOps
-from aegis_os.agents.qa.agent import AegisQA,TestFinding,TestReport
-from aegis_os.agents.sec.agent import AegisSec,SecurityFinding,SecurityReport,SecuritySummary
+from aegis_os.agents.qa.agent import AegisQA, TestFinding, TestReport
+from aegis_os.agents.sec.agent import AegisSec, SecurityFinding, SecurityReport, SecuritySummary
 from aegis_os.kernel.exceptions import CycleDetectedError
-from aegis_os.kernel.state import AgentRole,DAGNode,MissionDAG,MissionStatus
+from aegis_os.kernel.state import AgentRole, DAGNode, MissionDAG, MissionStatus
 from aegis_os.kernel.state_machine import MissionOrchestrator
-from aegis_os.kernel.state import MissionPhase
 
 
 class TestMissionDAGTopologicalSort:
@@ -204,7 +205,7 @@ class TestMissionOrchestrator:
 
     def test_closed_loop_repair_security_vulnerability(self,tmp_workspace,mock_cto,mock_dev,mock_qa,mock_sec,mock_ops) -> None:
         """Test that security vulnerabilities trigger a repair cycle to AegisDev."""
-        
+
         sec_failing=SecurityReport(
             audit_target="aegis_os/",
             findings=[
@@ -279,7 +280,7 @@ class TestMissionOrchestrator:
 
     def test_topological_execution_dependency_order(self,tmp_workspace,mock_dev,mock_qa,mock_sec,mock_ops) -> None:
         """Verify tasks execute strictly according to DAG dependency order, not list order."""
-        
+
         cto=MagicMock(spec=AegisCTO)
         cto.role=AgentRole.CTO
         cto.plan_mission.return_value=MissionPlan(
@@ -322,7 +323,7 @@ class TestMissionOrchestrator:
 
     def test_dag_cycle_fails_gracefully(self,tmp_workspace,mock_dev,mock_qa,mock_sec,mock_ops) -> None:
         """Test that if the CTO produces a plan with circular dependencies, orchestrator fails cleanly."""
-        
+
         cto=MagicMock(spec=AegisCTO)
         cto.role=AgentRole.CTO
 

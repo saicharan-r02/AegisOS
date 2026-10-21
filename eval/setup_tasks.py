@@ -263,25 +263,25 @@ def main():
     if tasks_dir.exists():
         shutil.rmtree(tasks_dir)
     tasks_dir.mkdir(parents=True, exist_ok=True)
-    
+
     for t in TASKS:
         tdir = tasks_dir / t["id"]
         tdir.mkdir(parents=True, exist_ok=True)
-        
+
         meta = {
             "id": t["id"],
             "category": t["category"],
             "goal": t["goal"]
         }
         (tdir / "task.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
-        
+
         fixture_dir = tdir / "fixture"
         fixture_dir.mkdir(parents=True, exist_ok=True)
         for rel_path, content in t["initial_files"].items():
             fpath = fixture_dir / rel_path
             fpath.parent.mkdir(parents=True, exist_ok=True)
             fpath.write_text(content, encoding="utf-8")
-            
+
         (tdir / "verify.py").write_text(t["verification_script"], encoding="utf-8")
         print(f"Created eval task: {t['id']} [{t['category']}] - {t['goal'][:60]}...")
 

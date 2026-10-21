@@ -1,0 +1,16 @@
+rules:
+  - id: python-eval
+    languages: [python]
+    severity: ERROR
+    message: Avoid eval on source-controlled or user-provided data.
+    pattern: eval(...)
+  - id: python-exec
+    languages: [python]
+    severity: ERROR
+    message: Avoid exec on source-controlled or user-provided data.
+    pattern: exec(...)
+  - id: subprocess-shell-true
+    languages: [python]
+    severity: WARNING
+    message: Avoid shell=True when starting subprocesses.
+    pattern: subprocess.$FUNC(..., shell=True, ...)

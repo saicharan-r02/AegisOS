@@ -1,7 +1,17 @@
 import pytest
+
 from aegis_os.kernel.exceptions import CycleDetectedError
-from aegis_os.kernel.state import AgentRole,AgentState,DAGNode,MissionDAG,MissionStatus,StepRecord,StepStatus
+from aegis_os.kernel.state import (
+    AgentRole,
+    AgentState,
+    DAGNode,
+    MissionDAG,
+    MissionStatus,
+    StepRecord,
+    StepStatus,
+)
 from aegis_os.tools.base import ToolResult
+
 
 class TestStepRecord:
     """StepRecord tests for state changes and duration metrics."""

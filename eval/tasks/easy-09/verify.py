@@ -1,4 +1,5 @@
 import sys
+
 try:
     from csv_utils import split_csv_line
     res1 = split_csv_line("apple,banana,cherry")

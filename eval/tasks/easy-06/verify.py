@@ -1,4 +1,5 @@
 import sys
+
 try:
     import pricing
     assert hasattr(pricing, "DEFAULT_TAX_RATE"), "DEFAULT_TAX_RATE constant missing"

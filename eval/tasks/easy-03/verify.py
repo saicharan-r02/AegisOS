@@ -1,4 +1,5 @@
 import sys
+
 try:
     from pagination import paginate
     items = list(range(1, 21))  # 1 to 20

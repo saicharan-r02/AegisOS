@@ -1,8 +1,7 @@
-import pytest
-from pathlib import Path
-from typing import Any
-from pydantic import BaseModel,Field
-from aegis_os.tools.base import BaseAegisTool,ToolResult
+from pydantic import BaseModel, Field
+
+from aegis_os.tools.base import BaseAegisTool, ToolResult
+
 
 class _AddArgs(BaseModel):
     """Simple addition tool args — for testing validation."""
@@ -121,6 +120,6 @@ class TestZeroCrashGuarantee:
     def test_crashing_tool_does_not_raise(self) -> None:
         """The run() call must not propagate any exception under any circumstance."""
         tool=_CrashingTool()
-        
+
         result=tool.run({"trigger":"crash"})
         assert result is not None

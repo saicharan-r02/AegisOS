@@ -1,9 +1,12 @@
 from pathlib import Path
+
 import pytest
-from pydantic import BaseModel,Field
+from pydantic import BaseModel, Field
+
 from aegis_os.tools.base import BaseAegisTool, ToolResult
-from aegis_os.tools.filesystem_tools import ReadFileTool,WriteFileTool
+from aegis_os.tools.filesystem_tools import ReadFileTool, WriteFileTool
 from aegis_os.tools.registry import ToolRegistry
+
 
 class _EchoArgs(BaseModel):
     message: str=Field(description="Message to echo back.")

@@ -1,7 +1,8 @@
 import re
 import sys
-from typing import Optional
-from pydantic import BaseModel,Field
+
+from pydantic import BaseModel, Field
+
 from aegis_os.sandbox.quotas import ExecutionQuota
 from aegis_os.sandbox.subprocess_sandbox import SubprocessSandbox
 from aegis_os.tools.base import BaseAegisTool, ToolResult
@@ -18,11 +19,11 @@ class PytestRunnerArgs(BaseModel):
         gt=0,
         description="Maximum seconds before the test run is killed.",
     )
-    extra_args: Optional[str]=Field(
+    extra_args: str | None=Field(
         default=None,
         description="Additional pytest arguments e.g. '-x --tb=short'.",
     )
-    cwd: Optional[str]=Field(
+    cwd: str | None=Field(
         default=None,
         description="Working directory for the test run.",
     )
@@ -72,15 +73,18 @@ class PytestRunnerTool(BaseAegisTool):
         failed=0
         errors=0
         if summary_match:
-            passed=int(re.search(r"(\d+) passed",combined).group(1)) if re.search(r"(\d+) passed",combined) else 0
-            failed=int(re.search(r"(\d+) failed",combined).group(1)) if re.search(r"(\d+) failed",combined) else 0
-            errors=int(re.search(r"(\d+) error",combined).group(1)) if re.search(r"(\d+) error",combined) else 0
+            passed_match=re.search(r"(\d+) passed",combined)
+            failed_match=re.search(r"(\d+) failed",combined)
+            errors_match=re.search(r"(\d+) error",combined)
+            passed=int(passed_match.group(1)) if passed_match else 0
+            failed=int(failed_match.group(1)) if failed_match else 0
+            errors=int(errors_match.group(1)) if errors_match else 0
         # Extract failing test names
         failing_tests=re.findall(r"FAILED\s+([\w/\\:.\-]+)",combined)
         all_passed=result.exit_code == 0 and failed == 0 and errors == 0
         summary=f"Tests: {passed} passed, {failed} failed, {errors} errors."
         if failing_tests:
-            summary += f"\nFailing tests:\n" + "\n".join(f"  - {t}" for t in failing_tests)
+            summary += "\nFailing tests:\n" + "\n".join(f"  - {t}" for t in failing_tests)
         return ToolResult(
             success=all_passed,
             output=combined,

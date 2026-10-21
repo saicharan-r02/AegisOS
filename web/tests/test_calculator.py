@@ -10,8 +10,7 @@ Covers add, subtract, multiply, and divide functions with:
 
 import pytest
 
-from calculator import add, subtract, multiply, divide
-
+from calculator import add, divide, multiply, subtract
 
 # ---------------------------------------------------------------------------
 # add

@@ -1,4 +1,5 @@
 import sys
+
 try:
     from calendar_utils import is_leap_year
     assert is_leap_year(2024) is True, "2024 should be leap"

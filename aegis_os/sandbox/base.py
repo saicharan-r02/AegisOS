@@ -1,8 +1,10 @@
-from abc import ABC,abstractmethod
+from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Optional
-from pydantic import BaseModel,Field
+
+from pydantic import BaseModel, Field
+
 from aegis_os.sandbox.quotas import ExecutionQuota
+
 
 class CommandResult(BaseModel):
     """
@@ -41,8 +43,8 @@ class SandboxExecutor(ABC):
     def execute_command(
         self,
         command: str,
-        cwd: Optional[Path] = None,
-        quota: Optional[ExecutionQuota] = None,
+        cwd: Path | None = None,
+        quota: ExecutionQuota | None = None,
     ) -> CommandResult:
         """
         Execute a shell command and return a structured result.

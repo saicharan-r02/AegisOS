@@ -1,15 +1,13 @@
 from pathlib import Path
 from unittest.mock import MagicMock, patch
-import pytest
-from aegis_os.agents.cto.agent import AegisCTO,MissionPlan, MissionTask
+
+from aegis_os.agents.cto.agent import AegisCTO, MissionPlan
 from aegis_os.agents.dev.agent import AegisDev
-from aegis_os.agents.qa.agent import AegisQA,TestReport
-from aegis_os.agents.sec.agent import AegisSec,SecurityReport
 from aegis_os.agents.ops.agent import AegisOps
+from aegis_os.agents.qa.agent import AegisQA, TestReport
+from aegis_os.agents.sec.agent import AegisSec, SecurityReport
 from aegis_os.tools.filesystem_tools import WriteFileTool
-from aegis_os.tools.test_tools import PytestRunnerTool
-from aegis_os.tools.terminal_tools import ExecuteCommandTool
-from aegis_os.tools.git_tools import GitCommitTool
+
 
 class TestSpecializedAgentsRBAC:
     @patch("aegis_os.agents.cto.agent.get_llm")
@@ -33,7 +31,7 @@ class TestSpecializedAgentsRBAC:
         mock_get_llm.return_value=MagicMock()
         dev=AegisDev(workspace_root=tmp_path)
         tool_names=set(dev.tools.all_tools().keys())
-        
+
         assert "read_file" in tool_names
         assert "write_file" in tool_names
         assert "list_dir" in tool_names
@@ -161,7 +159,7 @@ class TestSpecializedAgentsParsing:
     def test_sec_report_parsing(self,mock_get_llm,tmp_path: Path) -> None:
         mock_get_llm.return_value=MagicMock()
         sec=AegisSec(workspace_root=tmp_path)
-        
+
         sample_sec_output="""
         ```json
         {
@@ -193,3 +191,25 @@ class TestSpecializedAgentsParsing:
         assert len(report.findings)==1
         assert report.findings[0].severity=="HIGH"
         assert report.summary.high==1
+
+    @patch("aegis_os.agents.qa.agent.get_llm")
+    def test_qa_rejects_missing_or_empty_test_results(self,mock_get_llm,tmp_path: Path) -> None:
+        mock_get_llm.return_value=MagicMock()
+        qa=AegisQA(workspace_root=tmp_path)
+
+        missing=qa._parse_report("Task concluded.")
+        empty=qa._parse_report("0 passed, 0 failed, 0 errors")
+
+        assert missing.errors==1
+        assert missing.findings
+        assert empty.errors==1
+
+    @patch("aegis_os.agents.sec.agent.get_llm")
+    def test_security_report_rejects_unstructured_output(self,mock_get_llm,tmp_path: Path) -> None:
+        mock_get_llm.return_value=MagicMock()
+        sec=AegisSec(workspace_root=tmp_path)
+
+        report=sec._parse_report("Task concluded.","src/")
+
+        assert report.report_error is not None
+        assert "verifiable" in report.report_error

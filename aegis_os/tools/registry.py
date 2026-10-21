@@ -1,12 +1,15 @@
-from typing import Any, Iterator, Optional
+from collections.abc import Iterator
+from typing import Any
+
 from aegis_os.tools.base import BaseAegisTool
+
 
 class ToolRegistry:
     """
     Central catalog of tools available to agents.
     Provides schema export for LLM function calling and prompt formatting.
     """
-    def __init__(self, tools: Optional[Any] = None) -> None:
+    def __init__(self, tools: Any | None = None) -> None:
         self._tools: dict[str, BaseAegisTool] = {}
         if isinstance(tools, ToolRegistry):
             self._tools = dict(tools._tools)
@@ -29,7 +32,7 @@ class ToolRegistry:
             )
         self._tools[tool.name]=tool
 
-    def get(self, name: str) -> Optional[BaseAegisTool]:
+    def get(self, name: str) -> BaseAegisTool | None:
         """Look up a tool by its unique name."""
         return self._tools.get(name)
 

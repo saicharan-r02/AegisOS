@@ -1,10 +1,14 @@
 import asyncio
-from datetime import datetime,timezone
 import inspect
-from typing import Any,Callable,Coroutine,Optional,Union
 import uuid
-from pydantic import BaseModel,ConfigDict,Field
-from aegis_os.kernel.state import AgentRole,MissionStatus,StepRecord,StepStatus
+from collections.abc import Callable, Coroutine
+from datetime import UTC, datetime
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from aegis_os.kernel.state import AgentRole, MissionStatus, StepRecord
+
 
 class KernelEvent(BaseModel):
     """Base model for all kernel and telemetry events."""
@@ -12,8 +16,8 @@ class KernelEvent(BaseModel):
 
     event_id: str=Field(default_factory=lambda: str(uuid.uuid4()))
     event_type: str=Field(description="Dotted event identifier,e.g.'mission.status_changed'")
-    timestamp: datetime =Field(default_factory=lambda: datetime.now(timezone.utc))
-    session_id: Optional[str]=None
+    timestamp: datetime =Field(default_factory=lambda: datetime.now(UTC))
+    session_id: str | None=None
 
 class MissionStatusChangedEvent(KernelEvent):
     """Fired when overall mission status changes (e.g. PENDING -> RUNNING)."""
@@ -25,7 +29,7 @@ class MissionStatusChangedEvent(KernelEvent):
 class StateTransitionEvent(KernelEvent):
     """Fired when control shifts between agent roles or nodes."""
     event_type: str = "state.transition"
-    from_role: Optional[AgentRole]
+    from_role: AgentRole | None
     to_role: AgentRole
     step_index: int
 
@@ -47,12 +51,36 @@ class ApprovalRequestedEvent(KernelEvent):
     command_or_file: str
     justification: str
 
-EventHandler=Union[
-    Callable[[KernelEvent],None],
-    Callable[[KernelEvent],Coroutine[Any,Any,None]]
-]
+class LLMCallStartedEvent(KernelEvent):
+    """Emitted before a provider request so live clients can show activity."""
+    event_type: str = "llm.call_started"
+    role: AgentRole
+    provider: str | None = None
+    model: str | None = None
+    prompt_tokens: int = 0
 
-def _resolve_event_key(event_type: Union[type[KernelEvent], str]) -> str:
+class LLMCallCompletedEvent(KernelEvent):
+    """Emitted after a provider request with usage and latency metadata."""
+    event_type: str = "llm.call_completed"
+    role: AgentRole
+    provider: str | None = None
+    model: str | None = None
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cost_usd: float | None = None
+    latency_ms: float = 0.0
+    error: str | None = None
+
+class LLMTokenEvent(KernelEvent):
+    """A streamed text or tool-call delta from a provider."""
+    event_type: str = "llm.stream"
+    role: AgentRole
+    kind: str
+    content: str = ""
+
+EventHandler = Callable[[KernelEvent], None] | Callable[[KernelEvent], Coroutine[Any, Any, None]]
+
+def _resolve_event_key(event_type: type[KernelEvent] | str) -> str:
     """Extract string key from an event type class or string name."""
     if isinstance(event_type, str):
         return event_type
@@ -74,7 +102,7 @@ class EventBus:
         self._history: list[KernelEvent] = []
         self._max_history: int = 1000
 
-    def subscribe(self,event_type: Union[type[KernelEvent],str],handler: EventHandler) -> None:
+    def subscribe(self,event_type: type[KernelEvent] | str,handler: EventHandler) -> None:
         """Register a handler for a given event type or '*' for all events."""
         key=_resolve_event_key(event_type)
         if key not in self._subscribers:
@@ -82,7 +110,7 @@ class EventBus:
         if handler not in self._subscribers[key]:
             self._subscribers[key].append(handler)
 
-    def unsubscribe(self,event_type: Union[type[KernelEvent],str],handler: EventHandler) -> None:
+    def unsubscribe(self,event_type: type[KernelEvent] | str,handler: EventHandler) -> None:
         """Remove a previously registered handler."""
         key=_resolve_event_key(event_type)
         if key in self._subscribers and handler in self._subscribers[key]:
@@ -93,7 +121,7 @@ class EventBus:
         self._subscribers.clear()
         self._history.clear()
 
-    def get_history(self,limit: Optional[int] = None) -> list[KernelEvent]:
+    def get_history(self,limit: int | None = None) -> list[KernelEvent]:
         """Return recorded event history, newest first."""
         history=list(reversed(self._history))
         return history[:limit] if limit else history

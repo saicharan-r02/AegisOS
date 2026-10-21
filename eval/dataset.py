@@ -1,18 +1,18 @@
 import json
 from pathlib import Path
-from typing import List
+
 from eval.models import BenchmarkTask
 
 _TASKS_DIR = Path(__file__).parent / "tasks"
 
-def get_golden_dataset() -> List[BenchmarkTask]:
+def get_golden_dataset() -> list[BenchmarkTask]:
     """
     Load the benchmark evaluation dataset.
     Discovers tasks defined in eval/tasks/ if present, loading task metadata,
     initial fixture files, and verification scripts.
     """
-    tasks: List[BenchmarkTask] = []
-    
+    tasks: list[BenchmarkTask] = []
+
     if _TASKS_DIR.is_dir():
         for task_dir in sorted(_TASKS_DIR.iterdir()):
             if not task_dir.is_dir():
@@ -21,7 +21,7 @@ def get_golden_dataset() -> List[BenchmarkTask]:
             verify_file = task_dir / "verify.py"
             if not task_json.is_file() or not verify_file.is_file():
                 continue
-                
+
             try:
                 meta = json.loads(task_json.read_text(encoding="utf-8"))
                 initial_files = {}
@@ -31,9 +31,9 @@ def get_golden_dataset() -> List[BenchmarkTask]:
                         if fpath.is_file():
                             rel_path = fpath.relative_to(fixture_dir).as_posix()
                             initial_files[rel_path] = fpath.read_text(encoding="utf-8")
-                            
+
                 verification_script = verify_file.read_text(encoding="utf-8")
-                
+
                 tasks.append(
                     BenchmarkTask(
                         id=meta["id"],

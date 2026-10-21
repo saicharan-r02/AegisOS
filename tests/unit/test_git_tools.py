@@ -1,8 +1,10 @@
 import subprocess
-import tempfile
 from pathlib import Path
+
 import pytest
-from aegis_os.tools.git_tools import GitCommitTool,GitDiffTool,GitStatusTool
+
+from aegis_os.tools.git_tools import GitCommitTool, GitDiffTool, GitStatusTool
+
 
 @pytest.fixture
 def git_repo(tmp_path: Path) -> Path:
@@ -51,7 +53,7 @@ class TestGitStatusTool:
 
         from aegis_os.tools.git_tools import GitStatusArgs
         result=tool._execute(GitStatusArgs(cwd=str(git_repo)))
-        
+
         assert result.success is True
         assert "new_file.py" in result.output
 

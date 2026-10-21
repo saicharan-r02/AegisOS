@@ -1,20 +1,23 @@
 import fnmatch
 import os
-from pathlib import Path
 import re
-from typing import List, Optional
+from pathlib import Path
+
 from pydantic import BaseModel, Field
+
 from aegis_os.sandbox.path_guard import PathTraversalError, validate_path
 from aegis_os.tools.base import BaseAegisTool, ToolResult
+from aegis_os.tools.syntax import syntax_diagnostics
+
 
 class ReadFileArgs(BaseModel):
     path: str=Field(description="Relative path to the file within the workspace.")
-    start_line: Optional[int]=Field(
+    start_line: int | None=Field(
         default=None,
         ge=1,
         description="First line to read (1-indexed, inclusive). Reads from start if None.",
     )
-    end_line: Optional[int]=Field(
+    end_line: int | None=Field(
         default=None,
         ge=1,
         description="Last line to read (1-indexed, inclusive). Reads to end if None.",
@@ -27,6 +30,7 @@ class ReadFileTool(BaseAegisTool):
     Enforces path containment within the workspace root.
     """
     name="read_file"
+    parallel_safe = True
     description=(
         "Read the contents of a file within the workspace. "
         "Returns lines prefixed with 1-indexed line numbers. "
@@ -151,6 +155,19 @@ class WriteFileTool(BaseAegisTool):
             return ToolResult.fail(error=f"Failed to write file: {exc}")
 
         line_count = args.content.count("\n") + 1
+        diagnostics=syntax_diagnostics(safe_path,args.content)
+        if diagnostics:
+            return ToolResult(
+                success=False,
+                output=f"Wrote '{args.path}'. Syntax diagnostics:\n"+"\n".join(diagnostics),
+                error="Syntax validation failed after writing the file.",
+                metadata={
+                    "file_path":str(safe_path),
+                    "bytes_written":len(args.content.encode("utf-8")),
+                    "line_count":line_count,
+                    "syntax_diagnostics":diagnostics,
+                },
+            )
         return ToolResult.ok(
             output=f"Successfully wrote {line_count} lines to '{args.path}'.",
             metadata={
@@ -177,6 +194,7 @@ class ListDirTool(BaseAegisTool):
     Enforces path containment within the workspace root.
     """
     name="list_dir"
+    parallel_safe = True
     description=(
         "List the contents of a directory within the workspace. "
         "Returns files with sizes and directories marked with trailing '/'. "
@@ -254,6 +272,10 @@ class ReplaceInFileArgs(BaseModel):
         default=False,
         description="If True, replace all occurrences. If False, requires target_content to be unique.",
     )
+    whitespace_tolerant: bool = Field(
+        default=True,
+        description="If exact text is absent, allow differing whitespace between target tokens.",
+    )
 
 
 class ReplaceInFileTool(BaseAegisTool):
@@ -263,8 +285,8 @@ class ReplaceInFileTool(BaseAegisTool):
     """
     name = "replace_in_file"
     description = (
-        "Surgically replace exact matching content in a file without rewriting the whole file. "
-        "target_content must match exactly, including indentation. "
+        "Surgically replace matching content in a file without rewriting the whole file. "
+        "Matching is exact first, then whitespace-tolerant if requested. "
         "By default, errors if target_content is not unique (to prevent unintended replacements)."
     )
     args_schema = ReplaceInFileArgs
@@ -288,15 +310,25 @@ class ReplaceInFileTool(BaseAegisTool):
         except OSError as exc:
             return ToolResult.fail(error=f"Failed to read file: {exc}")
 
-        if args.target_content not in content:
+        if not args.target_content:
+            return ToolResult.fail("target_content cannot be empty.")
+        exact_match=args.target_content in content
+        if exact_match:
+            count=content.count(args.target_content)
+            matcher=None
+        elif args.whitespace_tolerant:
+            tokens=args.target_content.split()
+            if not tokens:
+                return ToolResult.fail("target_content cannot be empty or whitespace-only.")
+            matcher=re.compile(r"\s+".join(re.escape(token) for token in tokens))
+            count=len(list(matcher.finditer(content)))
+        else:
+            matcher=None
+            count=0
+        if count==0:
             return ToolResult.fail(
-                error=(
-                    f"Target content was not found in '{args.path}'. "
-                    f"Ensure exact match including whitespace and indentation."
-                )
+                error=f"Target content was not found in '{args.path}'."
             )
-
-        count = content.count(args.target_content)
         if not args.replace_all and count > 1:
             return ToolResult.fail(
                 error=(
@@ -306,7 +338,9 @@ class ReplaceInFileTool(BaseAegisTool):
                 )
             )
 
-        if args.replace_all:
+        if matcher is not None:
+            new_content=matcher.sub(args.replacement_content,content,count=0 if args.replace_all else 1)
+        elif args.replace_all:
             new_content = content.replace(args.target_content, args.replacement_content)
         else:
             new_content = content.replace(args.target_content, args.replacement_content, 1)
@@ -322,11 +356,20 @@ class ReplaceInFileTool(BaseAegisTool):
                 pass
             return ToolResult.fail(error=f"Failed to save modified file: {exc}")
 
+        diagnostics=syntax_diagnostics(safe_path,new_content)
+        if diagnostics:
+            return ToolResult(
+                success=False,
+                output=f"Replaced content in '{args.path}'. Syntax diagnostics:\n"+"\n".join(diagnostics),
+                error="Syntax validation failed after replacing file content.",
+                metadata={"file_path":str(safe_path),"replacements_made":count,"syntax_diagnostics":diagnostics},
+            )
         return ToolResult.ok(
             output=f"Successfully replaced {count if args.replace_all else 1} occurrence(s) in '{args.path}'.",
             metadata={
                 "file_path": str(safe_path),
                 "replacements_made": count if args.replace_all else 1,
+                "syntax_diagnostics": [],
             },
         )
 
@@ -349,6 +392,7 @@ class GrepSearchTool(BaseAegisTool):
     Search across workspace files for exact text or regex pattern matches.
     """
     name = "grep_search"
+    parallel_safe = True
     description = (
         "Search across workspace files for text or regex patterns. "
         "Returns matching file paths, line numbers, and content snippets."
@@ -373,8 +417,8 @@ class GrepSearchTool(BaseAegisTool):
         except re.error as exc:
             return ToolResult.fail(error=f"Invalid regex pattern: {exc}")
 
-        matches: List[str] = []
-        files_to_search: List[Path] = []
+        matches: list[str] = []
+        files_to_search: list[Path] = []
 
         if safe_path.is_file():
             files_to_search = [safe_path]
@@ -391,7 +435,7 @@ class GrepSearchTool(BaseAegisTool):
                 break
             try:
                 rel_path = fpath.relative_to(self.workspace_root)
-                with open(fpath, "r", encoding="utf-8", errors="ignore") as f:
+                with open(fpath, encoding="utf-8", errors="ignore") as f:
                     for line_idx, line in enumerate(f, start=1):
                         if pattern.search(line):
                             matches.append(f"{rel_path}:{line_idx}: {line.strip()[:150]}")
@@ -424,6 +468,7 @@ class FindFilesTool(BaseAegisTool):
     Find files by glob pattern within the workspace.
     """
     name = "find_files"
+    parallel_safe = True
     description = (
         "Find files matching a glob pattern (e.g. '*.py', '**/*.json', 'tests/**/test_*.py') "
         "within the workspace."
@@ -442,7 +487,7 @@ class FindFilesTool(BaseAegisTool):
         if not safe_path.exists() or not safe_path.is_dir():
             return ToolResult.fail(error=f"Directory not found: '{args.path}'")
 
-        found: List[str] = []
+        found: list[str] = []
         for root, dirs, files in os.walk(safe_path):
             dirs[:] = [d for d in dirs if d not in _IGNORED_DIRS and not d.startswith(".")]
             for fname in files:
@@ -465,4 +510,3 @@ class FindFilesTool(BaseAegisTool):
             output=header + "\n".join(found),
             metadata={"found_count": len(found)},
         )
-

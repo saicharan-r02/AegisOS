@@ -1,11 +1,18 @@
 from pathlib import Path
+
 import pytest
+
 from aegis_os.kernel.checkpoint import CheckpointStore
-from aegis_os.kernel.events import EventBus,StepStartedEvent
-from aegis_os.kernel.exceptions import InvalidTransitionError,MaxStepsExceededError,StagnationError
-from aegis_os.kernel.state import AgentRole,AgentState,MissionStatus,StepStatus
+from aegis_os.kernel.events import EventBus
+from aegis_os.kernel.exceptions import (
+    InvalidTransitionError,
+    MaxStepsExceededError,
+    StagnationError,
+)
+from aegis_os.kernel.state import AgentRole, AgentState, MissionStatus, StepStatus
 from aegis_os.kernel.state_machine import StateMachine
 from aegis_os.tools.base import ToolResult
+
 
 class TestStateMachineLifecycle:
     """Core state machine transitions and lifecycle events."""

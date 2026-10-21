@@ -1,4 +1,5 @@
 import sys
+
 try:
     from calculator import multiply
     assert multiply(3, 4) == 12, f"Expected 12, got {multiply(3, 4)}"

@@ -1,6 +1,7 @@
-from typing import Any, Dict
+from typing import Any
 
-def merge_dicts(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+
+def merge_dicts(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
     # BUG: Shallow merge destroys nested keys
     result = base.copy()
     result.update(override)

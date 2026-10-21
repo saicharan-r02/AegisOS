@@ -1,21 +1,43 @@
 from __future__ import annotations
-from pathlib import Path
+
 import time
-from typing import TYPE_CHECKING,Any,Optional
 import uuid
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 from aegis_os.kernel.checkpoint import CheckpointStore
-from aegis_os.kernel.events import EventBus,MissionStatusChangedEvent,StateTransitionEvent,StepCompletedEvent,StepStartedEvent
-from aegis_os.kernel.exceptions import InvalidTransitionError,MaxStepsExceededError,StagnationError
-from aegis_os.kernel.state import AgentRole,AgentState,DAGNode,MissionDAG,MissionPhase,MissionStatus,MissionSummary,RepairCycleRecord,StepRecord,StepStatus
+from aegis_os.kernel.events import (
+    EventBus,
+    MissionStatusChangedEvent,
+    StateTransitionEvent,
+    StepCompletedEvent,
+    StepStartedEvent,
+)
+from aegis_os.kernel.exceptions import (
+    InvalidTransitionError,
+    MaxStepsExceededError,
+    StagnationError,
+)
+from aegis_os.kernel.state import (
+    AgentRole,
+    AgentState,
+    DAGNode,
+    MissionDAG,
+    MissionPhase,
+    MissionStatus,
+    MissionSummary,
+    RepairCycleRecord,
+    StepRecord,
+    StepStatus,
+)
 from aegis_os.tools.base import ToolResult
 
 if TYPE_CHECKING:
-    from aegis_os.agents.cto.agent import AegisCTO,MissionPlan
+    from aegis_os.agents.cto.agent import AegisCTO, MissionPlan
     from aegis_os.agents.dev.agent import AegisDev
     from aegis_os.agents.ops.agent import AegisOps
-    from aegis_os.agents.qa.agent import AegisQA,TestReport
-    from aegis_os.agents.sec.agent import AegisSec,SecurityReport
+    from aegis_os.agents.qa.agent import AegisQA, TestReport
+    from aegis_os.agents.sec.agent import AegisSec, SecurityReport
 
 class StateMachine:
     """
@@ -23,7 +45,7 @@ class StateMachine:
     Enforces the central rule: the LLM decides intent; the state machine
     governs progression, isolation, budget enforcement, and rollbacks.
     """
-    def __init__(self,state: AgentState,checkpoint_store: Optional[CheckpointStore] = None,event_bus: Optional[EventBus] = None,) -> None:
+    def __init__(self,state: AgentState,checkpoint_store: CheckpointStore | None = None,event_bus: EventBus | None = None,) -> None:
         self.state=state
         self.checkpoint_store=checkpoint_store
         self.event_bus=event_bus
@@ -51,7 +73,7 @@ class StateMachine:
         self._emit(StateTransitionEvent(session_id=self.state.session_id,from_role=old_role,to_role=new_role,step_index=self.state.current_step_index))
         self._persist()
 
-    def begin_step(self,task_description: str,role: Optional[AgentRole] = None,tool_name: Optional[str] = None,tool_args: Optional[dict[str, Any]] = None) -> StepRecord:
+    def begin_step(self,task_description: str,role: AgentRole | None = None,tool_name: str | None = None,tool_args: dict[str, Any] | None = None) -> StepRecord:
         """
         Allocate and initiate a new step in the mission.
         Enforces execution budgets and stagnation limits before proceeding.
@@ -80,7 +102,7 @@ class StateMachine:
         self._persist()
         return step
 
-    def end_step(self,tool_result: Optional[ToolResult] = None,error: Optional[str] = None,status: Optional[StepStatus] = None,) -> StepRecord:
+    def end_step(self,tool_result: ToolResult | None = None,error: str | None = None,status: StepStatus | None = None,) -> StepRecord:
         """
         Complete the currently running step and evaluate status outcomes.
         """
@@ -219,29 +241,39 @@ def _resolve_role(role_str:str)->AgentRole:
 class MissionOrchestrator:
     def __init__(
         self,
-        workspace_root: Optional[Path]=None,
-        llm_provider: str="groq",
-        llm_model: Optional[str]=None,
-        state_machine: Optional[StateMachine]=None,
-        checkpoint_store: Optional[CheckpointStore]=None,
-        event_bus: Optional[EventBus]=None,
+        workspace_root: Path | None=None,
+        llm_provider: str | None=None,
+        llm_model: str | None=None,
+        state_machine: StateMachine | None=None,
+        checkpoint_store: CheckpointStore | None=None,
+        event_bus: EventBus | None=None,
         max_repair_cycles: int=3,
         max_steps: int=50,
-        cto: Optional[AegisCTO]=None,
-        dev: Optional[AegisDev]=None,
-        qa: Optional[AegisQA]=None,
-        sec: Optional[AegisSec]=None,
-        ops: Optional[AegisOps]=None
+        max_tokens: int | None=None,
+        max_cost_usd: float | None=None,
+        max_wall_seconds: float | None=None,
+        cto: AegisCTO | None=None,
+        dev: AegisDev | None=None,
+        qa: AegisQA | None=None,
+        sec: AegisSec | None=None,
+        ops: AegisOps | None=None
     ) -> None:
         self.workspace_root=Path(workspace_root) if workspace_root else Path.cwd()
         self.llm_provider=llm_provider
         self.llm_model=llm_model
         self._custom_state_machine=state_machine
-        self.state_machine:Optional[StateMachine]=state_machine
+        self.state_machine:StateMachine | None=state_machine
         self.checkpoint_store=checkpoint_store
         self.event_bus=event_bus
         self.max_repair_cycles=max_repair_cycles
         self.max_steps=max_steps
+        from aegis_os.kernel.llm import load_runtime_config
+        runtime_config=load_runtime_config()
+        self.max_tokens=max_tokens if max_tokens is not None else runtime_config.max_tokens
+        self.max_cost_usd=max_cost_usd if max_cost_usd is not None else runtime_config.max_cost_usd
+        self.max_wall_seconds=(
+            max_wall_seconds if max_wall_seconds is not None else runtime_config.max_wall_seconds
+        )
 
         self.cto=cto
         self.dev=dev
@@ -252,15 +284,20 @@ class MissionOrchestrator:
     def _initialize_agents(self) -> None:
         from aegis_os.agents.cto.agent import AegisCTO
         from aegis_os.agents.dev.agent import AegisDev
+        from aegis_os.agents.ops.agent import AegisOps
         from aegis_os.agents.qa.agent import AegisQA
         from aegis_os.agents.sec.agent import AegisSec
-        from aegis_os.agents.ops.agent import AegisOps
-        
-        if not self.cto: self.cto=AegisCTO(workspace_root=self.workspace_root,llm_provider=self.llm_provider,llm_model=self.llm_model)
-        if not self.dev: self.dev=AegisDev(workspace_root=self.workspace_root,llm_provider=self.llm_provider,llm_model=self.llm_model)
-        if not self.qa: self.qa=AegisQA(workspace_root=self.workspace_root,llm_provider=self.llm_provider,llm_model=self.llm_model)
-        if not self.sec: self.sec=AegisSec(workspace_root=self.workspace_root,llm_provider=self.llm_provider,llm_model=self.llm_model)
-        if not self.ops: self.ops=AegisOps(workspace_root=self.workspace_root,llm_provider=self.llm_provider,llm_model=self.llm_model)
+
+        if not self.cto:
+            self.cto=AegisCTO(workspace_root=self.workspace_root,llm_provider=self.llm_provider,llm_model=self.llm_model)
+        if not self.dev:
+            self.dev=AegisDev(workspace_root=self.workspace_root,llm_provider=self.llm_provider,llm_model=self.llm_model)
+        if not self.qa:
+            self.qa=AegisQA(workspace_root=self.workspace_root,llm_provider=self.llm_provider,llm_model=self.llm_model)
+        if not self.sec:
+            self.sec=AegisSec(workspace_root=self.workspace_root,llm_provider=self.llm_provider,llm_model=self.llm_model)
+        if not self.ops:
+            self.ops=AegisOps(workspace_root=self.workspace_root,llm_provider=self.llm_provider,llm_model=self.llm_model)
 
     def _sync_agents_with_state_machine(self,sm:StateMachine)->None:
         for agent in (self.cto,self.dev,self.qa,self.sec,self.ops):
@@ -289,13 +326,13 @@ class MissionOrchestrator:
             MissionSummary with final status,reports,and repair records.
         """
         start_time=time.time()
-        plan:Optional[MissionPlan]=None
+        plan:MissionPlan | None=None
         tasks_executed:list[str]=[]
         repair_cycles:int=0
         repair_history:list[RepairCycleRecord]=[]
-        qa_report:Optional[TestReport]=None
-        sec_report:Optional[SecurityReport]=None
-        ops_report:Optional[str]=None
+        qa_report:TestReport | None=None
+        sec_report:SecurityReport | None=None
+        ops_report:str | None=None
 
         if self._custom_state_machine is not None:
             self.state_machine=self._custom_state_machine
@@ -304,7 +341,10 @@ class MissionOrchestrator:
                 session_id=str(uuid.uuid4()),
                 mission_goal=goal,
                 status=MissionStatus.PENDING,
-                max_steps=self.max_steps
+                max_steps=self.max_steps,
+                max_tokens=self.max_tokens,
+                max_cost_usd=self.max_cost_usd,
+                max_wall_seconds=self.max_wall_seconds,
             )
             self.state_machine=StateMachine(
                 state=state,
@@ -317,6 +357,11 @@ class MissionOrchestrator:
         try:
             self._initialize_agents()
             self._sync_agents_with_state_machine(self.state_machine)
+            assert self.cto is not None
+            assert self.dev is not None
+            assert self.qa is not None
+            assert self.sec is not None
+            assert self.ops is not None
             if self.state_machine.state.status==MissionStatus.PENDING:
                 self.state_machine.start_mission()
 
@@ -325,6 +370,8 @@ class MissionOrchestrator:
 
             plan=self.cto.plan_mission(goal)
             self.state_machine.state.context_variables["mission_plan"]=plan.model_dump()
+            if self.state_machine.state.context_variables.get("partial_result_reason"):
+                raise RuntimeError("Mission stopped at the configured budget.")
 
             dag=MissionDAG()
             for task in plan.tasks:
@@ -369,6 +416,8 @@ class MissionOrchestrator:
                 )
                 agent.run(task_instruction, max_iterations=15)
                 tasks_executed.append(node.node_id)
+                if self.state_machine.state.context_variables.get("partial_result_reason"):
+                    raise RuntimeError("Mission stopped at the configured budget.")
 
             self.state_machine.state.context_variables["phase"]=MissionPhase.VERIFICATION.value
 
@@ -376,12 +425,16 @@ class MissionOrchestrator:
                 self.state_machine.transition_role(AgentRole.QA)
                 qa_report = self.qa.run_and_report()
                 self.state_machine.state.context_variables["qa_report"]=qa_report.model_dump()
+                if self.state_machine.state.context_variables.get("partial_result_reason"):
+                    raise RuntimeError("Mission stopped at the configured budget.")
 
                 self.state_machine.transition_role(AgentRole.SEC)
                 sec_report = self.sec.audit()
                 self.state_machine.state.context_variables["sec_report"]=sec_report.model_dump()
+                if self.state_machine.state.context_variables.get("partial_result_reason"):
+                    raise RuntimeError("Mission stopped at the configured budget.")
                 qa_failed = (qa_report.failed>0) or (qa_report.errors>0)
-                sec_failed = (sec_report.summary.critical>0) or (sec_report.summary.high>0)
+                sec_failed = bool(sec_report.report_error) or (sec_report.summary.critical>0) or (sec_report.summary.high>0)
 
                 if not qa_failed and not sec_failed:
                     if repair_history:
@@ -404,6 +457,8 @@ class MissionOrchestrator:
 
                 if sec_failed:
                     triggers.append("SECURITY_VULNERABILITIES")
+                    if sec_report.report_error:
+                        issues.append(f"SEC report failed: {sec_report.report_error}")
                     for sf in sec_report.findings:
                         if sf.severity in ("CRITICAL","HIGH"):
                             issues.append(
@@ -439,6 +494,8 @@ class MissionOrchestrator:
                     + "\n\nPlease analyze root causes, modify the code to resolve these failures, and commit the fixes."
                 )
                 dev_patch_summary=self.dev.run(repair_prompt)
+                if self.state_machine.state.context_variables.get("partial_result_reason"):
+                    raise RuntimeError("Mission stopped at the configured budget.")
                 repair_history.append(
                     RepairCycleRecord(
                         cycle_index=repair_cycles,
@@ -454,6 +511,8 @@ class MissionOrchestrator:
                 self.state_machine.transition_role(AgentRole.OPS)
                 ops_report=self.ops.health_check()
                 self.state_machine.state.context_variables["ops_report"]=ops_report
+                if self.state_machine.state.context_variables.get("partial_result_reason"):
+                    raise RuntimeError("Mission stopped at the configured budget.")
 
             self.state_machine.state.context_variables["phase"]=MissionPhase.FINALIZATION.value
             if not self.state_machine.state.is_terminal:
@@ -462,7 +521,10 @@ class MissionOrchestrator:
                 )
 
         except Exception as exc:
-            if not self.state_machine.state.is_terminal:
+            partial_reason=self.state_machine.state.context_variables.get("partial_result_reason")
+            if partial_reason and self.state_machine.state.status!=MissionStatus.PAUSED:
+                self.state_machine.pause_mission()
+            elif not self.state_machine.state.is_terminal:
                 self.state_machine.fail_mission(f"Mission failed with error: {exc}")
             duration = round(time.time() - start_time, 2)
             return MissionSummary(
@@ -478,7 +540,9 @@ class MissionOrchestrator:
                 sec_report=sec_report,
                 ops_report=ops_report,
                 duration_seconds=duration,
-                error=str(exc)
+                tokens_used=self.state_machine.state.tokens_used,
+                cost_used_usd=self.state_machine.state.cost_used_usd,
+                error=f"Partial result: {partial_reason}" if partial_reason else str(exc)
             )
 
         duration=round(time.time()-start_time,2)
@@ -494,5 +558,7 @@ class MissionOrchestrator:
             qa_report=qa_report,
             sec_report=sec_report,
             ops_report=ops_report,
-            duration_seconds=duration
+            duration_seconds=duration,
+            tokens_used=self.state_machine.state.tokens_used,
+            cost_used_usd=self.state_machine.state.cost_used_usd,
         )

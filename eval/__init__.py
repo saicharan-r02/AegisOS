@@ -1,6 +1,6 @@
-from eval.models import BenchmarkTask, JudgeResult, BenchmarkReport
-from eval.engine import AegisJudge
 from eval.dataset import get_golden_dataset
+from eval.engine import AegisJudge
+from eval.models import BenchmarkReport, BenchmarkTask, JudgeResult
 
 __all__ = [
     "BenchmarkTask",

@@ -1,4 +1,5 @@
 import sys
+
 try:
     from math_utils import add
     assert add(2, 3) == 5, f"Expected 5, got {add(2, 3)}"

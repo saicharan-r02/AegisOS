@@ -1,24 +1,25 @@
 from pathlib import Path
-from typing import Optional
+
 from pydantic import BaseModel, Field
+
 from aegis_os.sandbox.base import SandboxExecutor
 from aegis_os.sandbox.quotas import ExecutionQuota
 from aegis_os.sandbox.subprocess_sandbox import SubprocessSandbox
-from aegis_os.tools.base import BaseAegisTool,ToolResult
+from aegis_os.tools.base import BaseAegisTool, ToolResult
 
 
 class ExecuteCommandArgs(BaseModel):
     command: str=Field(
         description="The shell command to execute inside the sandbox."
     )
-    cwd: Optional[str]=Field(
+    cwd: str | None=Field(
         default=None,
         description=(
             "Working directory for the command, relative to workspace root. "
             "Defaults to workspace root if not provided."
         ),
     )
-    timeout_seconds: Optional[float]=Field(
+    timeout_seconds: float | None=Field(
         default=None,
         gt=0,
         description=(
@@ -41,7 +42,7 @@ class ExecuteCommandTool(BaseAegisTool):
     )
     args_schema=ExecuteCommandArgs
 
-    def __init__(self,workspace_root: Path,sandbox: Optional[SandboxExecutor]=None,default_quota: Optional[ExecutionQuota]=None)-> None:
+    def __init__(self,workspace_root: Path,sandbox: SandboxExecutor | None=None,default_quota: ExecutionQuota | None=None)-> None:
         self.workspace_root=workspace_root
         self.sandbox: SandboxExecutor=sandbox or SubprocessSandbox()
         self.default_quota=default_quota or ExecutionQuota()
