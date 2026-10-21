@@ -1,0 +1,5 @@
+{
+  "id": "easy-11",
+  "category": "feature",
+  "goal": "Write `fibonacci(n: int) -> int` in `fib.py` returning the nth Fibonacci number (0-indexed: fib(0)=0, fib(1)=1, fib(6)=8)."
+}

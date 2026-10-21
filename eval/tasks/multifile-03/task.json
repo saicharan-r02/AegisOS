@@ -1,0 +1,5 @@
+{
+  "id": "multifile-03",
+  "category": "multifile",
+  "goal": "Coordinate database session management between `database/connection.py` and `database/repo.py`."
+}

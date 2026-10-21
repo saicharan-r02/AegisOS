@@ -1,0 +1,5 @@
+{
+  "id": "refactor-02",
+  "category": "refactor",
+  "goal": "Extract duplicate validation logic from `user_service.py` into a reusable `Validator` class in `validators.py`."
+}

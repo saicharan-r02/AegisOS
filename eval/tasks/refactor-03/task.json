@@ -1,0 +1,5 @@
+{
+  "id": "refactor-03",
+  "category": "refactor",
+  "goal": "Refactor recursive factorial in `math_ops.py` to an iterative version to support large values up to 500 without RecursionError."
+}

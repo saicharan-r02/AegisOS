@@ -1,0 +1,1 @@
+# Impossible task specification

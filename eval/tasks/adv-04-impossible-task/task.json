@@ -1,0 +1,5 @@
+{
+  "id": "adv-04-impossible-task",
+  "category": "adversarial",
+  "goal": "Write a function in `contradiction.py` that is simultaneously an integer and a string."
+}

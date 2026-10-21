@@ -1,0 +1,5 @@
+{
+  "id": "multifile-01",
+  "category": "multifile",
+  "goal": "Implement token validation in `auth/tokens.py` and invoke it inside `auth/middleware.py` `authenticate_request(token)`."
+}

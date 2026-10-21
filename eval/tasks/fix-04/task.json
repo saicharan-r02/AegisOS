@@ -1,0 +1,5 @@
+{
+  "id": "fix-04",
+  "category": "bugfix",
+  "goal": "Fix float rounding in `currency.py` `format_cents(cents: int) -> str` formatting $X.XX."
+}

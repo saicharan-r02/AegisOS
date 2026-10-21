@@ -1,0 +1,5 @@
+{
+  "id": "fix-05",
+  "category": "bugfix",
+  "goal": "Fix mutable default argument bug in `accumulator.py` `add_item` function."
+}

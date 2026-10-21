@@ -1,0 +1,5 @@
+{
+  "id": "ts-01",
+  "category": "multilingual",
+  "goal": "Create TypeScript interface `UserProfile` and type-guard in `types.ts`."
+}

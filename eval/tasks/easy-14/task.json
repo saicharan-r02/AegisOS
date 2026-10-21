@@ -1,0 +1,5 @@
+{
+  "id": "easy-14",
+  "category": "feature",
+  "goal": "Implement `is_palindrome(s: str) -> bool` in `palindrome.py` ignoring casing, whitespace, and punctuation."
+}

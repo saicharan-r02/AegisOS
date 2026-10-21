@@ -1,0 +1,5 @@
+{
+  "id": "refactor-01",
+  "category": "refactor",
+  "goal": "Refactor `report.py` to use a dataclass `ReportConfig` instead of raw dictionary parameters."
+}

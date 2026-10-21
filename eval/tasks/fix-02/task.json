@@ -1,0 +1,5 @@
+{
+  "id": "fix-02",
+  "category": "bugfix",
+  "goal": "Handle empty list ZeroDivisionError in `stats.py` `calculate_mean(numbers: list[float]) -> float` returning 0.0."
+}

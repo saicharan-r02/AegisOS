@@ -1,0 +1,5 @@
+{
+  "id": "multifile-02",
+  "category": "multifile",
+  "goal": "Build pub-sub event router between `events/broker.py` and `events/handlers.py`."
+}

@@ -1,0 +1,5 @@
+{
+  "id": "js-02",
+  "category": "multilingual",
+  "goal": "Implement `slugify(text)` in `slug.js` converting string to lowercase kebab-case."
+}
