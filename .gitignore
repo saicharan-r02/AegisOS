@@ -32,6 +32,9 @@ htmlcov/
 *.db-wal
 *.db-shm
 
+# Logs
+*.log
+
 # IDE & OS
 .vscode/
 .idea/
