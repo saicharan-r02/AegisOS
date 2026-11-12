@@ -1,7 +1,15 @@
 # Model routing — NVIDIA NIM hosted API.
-# Primary: Nemotron Ultra 550B (most capable) for planning/review roles.
-# Fast roles: minimax-m3.1-flash (DEV/OPS/EXPLORER/SUMMARIZER).
-# Second fallback: mistral-7b-instruct (always-available lightweight option).
+# Optimized & verified with live tool-calling tests on 2026-11-12.
+#
+# Primary High-Capacity (Planning & Security):
+#   - nvidia/nemotron-3-ultra-550b-a55b (550B Flagship, Native Tools verified)
+# Primary Fast Execution (Code & Operations):
+#   - nvidia/nemotron-3.5-bolt-e4b (0.3s Latency, Native Tools verified)
+# Specialized Coding Secondary:
+#   - poolside/laguna-xs-2.1 (1.4s Latency, Native Tools verified)
+# High-Reliability Reasoning & Verification:
+#   - nvidia/nemotron-3.5-lightning-30b-a3b (30B Reasoning, Native Tools verified)
+
 [llm]
 default_provider = "nvidia"
 default_model = "nvidia/nemotron-3-ultra-550b-a55b"
@@ -23,28 +31,28 @@ model = "nvidia/nemotron-3-ultra-550b-a55b"
 context_tokens = 320000
 max_tool_output_tokens = 20000
 fallback = [
-  { provider = "nvidia", model = "minimaxai/minimax-m3.1-flash" },
-  { provider = "nvidia", model = "mistralai/mistral-7b-instruct-v0.3" },
+  { provider = "nvidia", model = "nvidia/nemotron-3.5-lightning-30b-a3b" },
+  { provider = "nvidia", model = "nvidia/nemotron-3.5-bolt-e4b" },
 ]
 
 [llm.roles.DEV]
 provider = "nvidia"
-model = "minimaxai/minimax-m3.1-flash"
+model = "nvidia/nemotron-3.5-bolt-e4b"
 context_tokens = 320000
 max_tool_output_tokens = 20000
 fallback = [
-  { provider = "nvidia", model = "nv-mistralai/mistral-nemo-12b-instruct" },
-  { provider = "nvidia", model = "nvidia/nemotron-3-ultra-550b-a55b" },
+  { provider = "nvidia", model = "poolside/laguna-xs-2.1" },
+  { provider = "nvidia", model = "nvidia/nemotron-3.5-lightning-30b-a3b" },
 ]
 
 [llm.roles.QA]
 provider = "nvidia"
-model = "nvidia/nemotron-3.5-super-vl-120b-a12b"
+model = "nvidia/nemotron-3.5-lightning-30b-a3b"
 context_tokens = 320000
 max_tool_output_tokens = 15000
 fallback = [
-  { provider = "nvidia", model = "minimaxai/minimax-m3.1-flash" },
-  { provider = "nvidia", model = "mistralai/mistral-7b-instruct-v0.3" },
+  { provider = "nvidia", model = "nvidia/nemotron-3.5-bolt-e4b" },
+  { provider = "nvidia", model = "poolside/laguna-xs-2.1" },
 ]
 
 [llm.roles.SEC]
@@ -53,48 +61,48 @@ model = "nvidia/nemotron-3-ultra-550b-a55b"
 context_tokens = 320000
 max_tool_output_tokens = 15000
 fallback = [
-  { provider = "nvidia", model = "minimaxai/minimax-m3.1-flash" },
-  { provider = "nvidia", model = "mistralai/mistral-7b-instruct-v0.3" },
+  { provider = "nvidia", model = "nvidia/nemotron-3.5-lightning-30b-a3b" },
+  { provider = "nvidia", model = "nvidia/nemotron-3.5-bolt-e4b" },
 ]
 
 [llm.roles.OPS]
 provider = "nvidia"
-model = "minimaxai/minimax-m3.1-flash"
+model = "nvidia/nemotron-3.5-bolt-e4b"
 context_tokens = 320000
 max_tool_output_tokens = 15000
 fallback = [
-  { provider = "nvidia", model = "nv-mistralai/mistral-nemo-12b-instruct" },
-  { provider = "nvidia", model = "nvidia/nemotron-3-ultra-550b-a55b" },
+  { provider = "nvidia", model = "poolside/laguna-xs-2.1" },
+  { provider = "nvidia", model = "nvidia/nemotron-3.5-lightning-30b-a3b" },
 ]
 
 [llm.roles.REVIEWER]
 provider = "nvidia"
-model = "nvidia/nemotron-3.5-super-vl-120b-a12b"
+model = "nvidia/nemotron-3.5-lightning-30b-a3b"
 context_tokens = 320000
 max_tool_output_tokens = 20000
 fallback = [
-  { provider = "nvidia", model = "minimaxai/minimax-m3.1-flash" },
-  { provider = "nvidia", model = "mistralai/mistral-7b-instruct-v0.3" },
+  { provider = "nvidia", model = "nvidia/nemotron-3.5-bolt-e4b" },
+  { provider = "nvidia", model = "poolside/laguna-xs-2.1" },
 ]
 
 [llm.roles.EXPLORER]
 provider = "nvidia"
-model = "minimaxai/minimax-m3.1-flash"
+model = "nvidia/nemotron-3.5-bolt-e4b"
 context_tokens = 320000
 max_tool_output_tokens = 15000
 fallback = [
-  { provider = "nvidia", model = "nv-mistralai/mistral-nemo-12b-instruct" },
+  { provider = "nvidia", model = "poolside/laguna-xs-2.1" },
   { provider = "nvidia", model = "nvidia/nemotron-3-ultra-550b-a55b" },
 ]
 
 [llm.roles.SUMMARIZER]
 provider = "nvidia"
-model = "minimaxai/minimax-m3.1-flash"
+model = "nvidia/nemotron-3.5-bolt-e4b"
 context_tokens = 320000
 max_tool_output_tokens = 10000
 fallback = [
-  { provider = "nvidia", model = "nv-mistralai/mistral-nemo-12b-instruct" },
-  { provider = "nvidia", model = "nvidia/nemotron-3.5-super-vl-120b-a12b" },
+  { provider = "nvidia", model = "poolside/laguna-xs-2.1" },
+  { provider = "nvidia", model = "nvidia/nemotron-3.5-lightning-30b-a3b" },
 ]
 
 
