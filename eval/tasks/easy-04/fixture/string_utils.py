@@ -1,0 +1,1 @@
+"""String utilities module."""

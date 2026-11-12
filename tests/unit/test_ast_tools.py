@@ -1,6 +1,9 @@
 from pathlib import Path
+
 import pytest
-from aegis_os.tools.ast_tools import ASTGrepTool,ASTGrepArgs
+
+from aegis_os.tools.ast_tools import ASTGrepArgs, ASTGrepTool
+
 
 @pytest.fixture
 def sample_python_project(tmp_path: Path) -> Path:

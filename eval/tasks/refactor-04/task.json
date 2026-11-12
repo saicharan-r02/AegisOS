@@ -1,0 +1,5 @@
+{
+  "id": "refactor-04",
+  "category": "refactor",
+  "goal": "Refactor `pipeline.py` to chain data transformations using generators for memory efficiency."
+}

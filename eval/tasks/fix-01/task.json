@@ -1,0 +1,5 @@
+{
+  "id": "fix-01",
+  "category": "bugfix",
+  "goal": "Fix off-by-one bug in binary search algorithm in `search.py`."
+}

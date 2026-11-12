@@ -1,8 +1,10 @@
 import subprocess
-import tempfile
 from pathlib import Path
+
 import pytest
-from aegis_os.tools.git_tools import GitCommitTool,GitDiffTool,GitStatusTool
+
+from aegis_os.tools.git_tools import GitCommitTool, GitDiffTool, GitStatusTool
+
 
 @pytest.fixture
 def git_repo(tmp_path: Path) -> Path:
@@ -51,7 +53,7 @@ class TestGitStatusTool:
 
         from aegis_os.tools.git_tools import GitStatusArgs
         result=tool._execute(GitStatusArgs(cwd=str(git_repo)))
-        
+
         assert result.success is True
         assert "new_file.py" in result.output
 
@@ -86,7 +88,7 @@ class TestGitDiffTool:
 class TestGitCommitTool:
     def test_commit_with_add_all(self, git_repo: Path) -> None:
         (git_repo/"README.md").write_text("# After commit\n")
-        tool=GitCommitTool()
+        tool=GitCommitTool(approval_callback=lambda _:True)
         from aegis_os.tools.git_tools import GitCommitArgs
         result=tool._execute(GitCommitArgs(message="feat: test commit",add_all=True,cwd=str(git_repo)))
         assert result.success is True
@@ -95,7 +97,7 @@ class TestGitCommitTool:
 
     def test_commit_without_staged_changes_fails(self,git_repo: Path) -> None:
         """Committing with nothing staged should fail gracefully."""
-        tool=GitCommitTool()
+        tool=GitCommitTool(approval_callback=lambda _:True)
         from aegis_os.tools.git_tools import GitCommitArgs
         result=tool._execute(GitCommitArgs(message="feat: empty commit",add_all=False,cwd=str(git_repo)))
 
@@ -105,7 +107,17 @@ class TestGitCommitTool:
         """Commit messages with double-quotes should be escaped, not cause shell injection."""
         (git_repo/"feature.py").write_text("# feature\n")
         subprocess.run(["git","add","feature.py"],cwd=git_repo,capture_output=True)
-        tool=GitCommitTool()
+        tool=GitCommitTool(approval_callback=lambda _:True)
         from aegis_os.tools.git_tools import GitCommitArgs
         result=tool._execute(GitCommitArgs(message='feat: add "quoted feature" support',add_all=False,cwd=str(git_repo)))
         assert result.success is True
+
+    def test_commit_requires_approval_by_default(self,git_repo: Path) -> None:
+        (git_repo/"README.md").write_text("# Needs approval\n",encoding="utf-8")
+        tool=GitCommitTool(workspace_root=git_repo)
+        from aegis_os.tools.git_tools import GitCommitArgs
+
+        result=tool.run(GitCommitArgs(message="feat: gated commit",add_all=True).model_dump())
+
+        assert result.success is False
+        assert result.metadata["approval_required"] is True

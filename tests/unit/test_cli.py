@@ -1,36 +1,52 @@
 from io import StringIO
-from pathlib import Path
-from unittest.mock import MagicMock,patch
+from unittest.mock import patch
+
 import pytest
 from rich.console import Console
-from aegis_os.agents.cto.agent import MissionPlan,MissionTask
-from aegis_os.agents.qa.agent import TestFinding,TestReport
-from aegis_os.agents.sec.agent import SecurityFinding,SecurityReport,SecuritySummary
+
+from aegis_os.agents.cto.agent import MissionPlan, MissionTask
+from aegis_os.agents.qa.agent import TestFinding, TestReport
+from aegis_os.agents.sec.agent import SecurityFinding, SecurityReport, SecuritySummary
 from aegis_os.cli.display import AegisDisplay
-from aegis_os.cli.main import build_parser,main
+from aegis_os.cli.main import build_parser, main
 from aegis_os.kernel.checkpoint import CheckpointStore
-from aegis_os.kernel.events import MissionStatusChangedEvent,StateTransitionEvent,StepCompletedEvent,StepStartedEvent
-from aegis_os.kernel.state import AgentRole,AgentState,MissionStatus,StepRecord,StepStatus
-from aegis_os.kernel.state import MissionSummary,RepairCycleRecord
+from aegis_os.kernel.events import (
+    MissionStatusChangedEvent,
+    StateTransitionEvent,
+    StepCompletedEvent,
+    StepStartedEvent,
+)
+from aegis_os.kernel.state import (
+    AgentRole,
+    AgentState,
+    MissionStatus,
+    MissionSummary,
+    RepairCycleRecord,
+    StepRecord,
+    StepStatus,
+)
+
 
 class TestCLIParser:
     """Test CLI argument parsing for all subcommands."""
 
     def test_run_parser(self) -> None:
         parser=build_parser()
-        args=parser.parse_args(["run","Build a feature","-w","/tmp","--max-repairs","5"])
+        args=parser.parse_args(["run","Build a feature","-w","/tmp","--max-repairs","5","--max-tokens","12000","--max-cost-usd","1.5"])
         assert args.subcommand=="run"
         assert args.goal=="Build a feature"
         assert args.workspace=="/tmp"
         assert args.max_repairs==5
-        assert args.provider=="groq"
+        assert args.provider is None
+        assert args.max_tokens==12000
+        assert args.max_cost_usd==1.5
 
     def test_audit_parser(self) -> None:
         parser=build_parser()
-        args=parser.parse_args(["audit","-t","src/","-p","groq"])
+        args=parser.parse_args(["audit","-t","src/","-p","nvidia"])
         assert args.subcommand=="audit"
         assert args.target=="src/"
-        assert args.provider=="groq"
+        assert args.provider=="nvidia"
 
     def test_test_parser(self) -> None:
         parser=build_parser()
@@ -147,6 +163,47 @@ class TestAegisDisplay:
         assert "SEC-001" in output
         assert "HIGH" in output
         assert "SQL injection" in output
+        assert "Use bound parameters" in output
+
+    def test_show_sec_report_preserves_long_finding_details(self) -> None:
+        buf=StringIO()
+        console=Console(file=buf,force_terminal=True,width=64)
+        display=AegisDisplay(console=console)
+        report=SecurityReport(
+            audit_target="aegis_os/",
+            findings=[
+                SecurityFinding(
+                    id="SEC-002",
+                    severity="MEDIUM",
+                    category="Configuration",
+                    file="settings.py",
+                    line=42,
+                    description="A detailed finding description that must remain visible in a narrow terminal.",
+                    remediation="Apply the complete remediation guidance without losing its ending.",
+                )
+            ],
+            summary=SecuritySummary(medium=1),
+        )
+
+        display.show_sec_report(report)
+        import re
+        clean_text = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", buf.getvalue())
+        clean_text = re.sub(r"[\u2500-\u257f]", " ", clean_text)
+        output = " ".join(clean_text.split())
+        assert "must remain visible in a" in output
+        assert "narrow terminal." in output
+        assert "without losing its" in output
+        assert "ending." in output
+
+    def test_show_sec_report_marks_missing_audit_as_error(self,string_console) -> None:
+        console,buffer=string_console
+        display=AegisDisplay(console=console)
+        report=SecurityReport(audit_target="src/",report_error="No verifiable audit report")
+
+        display.show_sec_report(report)
+
+        assert "Audit Report Error" in buffer.getvalue()
+        assert "No verifiable audit report" in buffer.getvalue()
 
     def test_show_repair_cycle(self,string_console) -> None:
         console,buf=string_console
@@ -181,6 +238,8 @@ class TestAegisDisplay:
         assert "COMPLETED" in output
         assert "sess-xyz" in output
         assert "5.42s" in output
+        assert "LLM Tokens:" in output
+        assert "Estimated Cost:" in output
 
     def test_telemetry_handler_renders_events(self,string_console) -> None:
         console,buf=string_console
@@ -188,13 +247,13 @@ class TestAegisDisplay:
         handler=display.create_telemetry_handler()
 
         handler(StateTransitionEvent(from_role=AgentRole.CTO,to_role=AgentRole.DEV,step_index=2))
-        
+
         step=StepRecord(step_index=3,role=AgentRole.DEV,task_description="Refactoring handler",tool_name="write_file")
         handler(StepStartedEvent(step=step))
-        
+
         step.complete(status=StepStatus.SUCCESS)
         handler(StepCompletedEvent(step=step))
-        
+
         handler(MissionStatusChangedEvent(old_status=MissionStatus.PENDING,new_status=MissionStatus.RUNNING,goal="Test Goal"))
 
         output=buf.getvalue()

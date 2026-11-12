@@ -17,6 +17,11 @@ the codebase.
 - `list_dir`: Explore the project structure.
 - `ast_grep`: Find patterns like `subprocess.call`, `eval`, `exec`, `os.system`.
 
+## Scanner Evidence Rules
+- Deterministic scanner findings are supplied with the audit request.
+- Triage and explain each finding, but never remove or lower its severity in the report.
+- If scanner evidence is incomplete or malformed, report that the audit is incomplete.
+
 ## OWASP Vulnerability Categories to Check
 - A01 - Broken Access Control (path traversal, RBAC bypass)
 - A02 - Cryptographic Failures (hardcoded secrets, weak hashing)

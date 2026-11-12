@@ -1,0 +1,5 @@
+{
+  "id": "easy-12",
+  "category": "feature",
+  "goal": "Implement `parse_iso_date(dt_str: str) -> dict` in `date_utils.py` returning {'year': int, 'month': int, 'day': int}."
+}

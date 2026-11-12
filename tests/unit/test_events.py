@@ -1,6 +1,11 @@
-import pytest
-from aegis_os.kernel.events import (EventBus,KernelEvent,MissionStatusChangedEvent,StateTransitionEvent)
-from aegis_os.kernel.state import AgentRole,MissionStatus
+from aegis_os.kernel.events import (
+    EventBus,
+    KernelEvent,
+    MissionStatusChangedEvent,
+    StateTransitionEvent,
+)
+from aegis_os.kernel.state import AgentRole, MissionStatus
+
 
 class TestEventBus:
     """EventBus pub/sub dispatch and safety tests."""

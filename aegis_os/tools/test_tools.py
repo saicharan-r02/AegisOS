@@ -1,31 +1,40 @@
+import os
 import re
+import shlex
+import subprocess
 import sys
-from typing import Optional
-from pydantic import BaseModel,Field
+from pathlib import Path
+
+from pydantic import BaseModel, Field
+
+from aegis_os.sandbox.base import SandboxExecutor
+from aegis_os.sandbox.docker_sandbox import DockerSandbox
+from aegis_os.sandbox.path_guard import PathTraversalError, validate_path
+from aegis_os.sandbox.policy import CommandPolicy, CommandTier
 from aegis_os.sandbox.quotas import ExecutionQuota
 from aegis_os.sandbox.subprocess_sandbox import SubprocessSandbox
 from aegis_os.tools.base import BaseAegisTool, ToolResult
 
-_sandbox=SubprocessSandbox()
 
 class PytestRunnerArgs(BaseModel):
-    target: str=Field(
+    target: str = Field(
         default="tests/",
         description="Test path to run: a directory, a file, or a specific test e.g. tests/unit/test_state.py::TestAgentState::test_initial_state",
     )
-    timeout_seconds: float=Field(
+    timeout_seconds: float = Field(
         default=60.0,
         gt=0,
         description="Maximum seconds before the test run is killed.",
     )
-    extra_args: Optional[str]=Field(
+    extra_args: str | None = Field(
         default=None,
         description="Additional pytest arguments e.g. '-x --tb=short'.",
     )
-    cwd: Optional[str]=Field(
+    cwd: str | None = Field(
         default=None,
         description="Working directory for the test run.",
     )
+
 
 class PytestRunnerTool(BaseAegisTool):
     """
@@ -33,54 +42,83 @@ class PytestRunnerTool(BaseAegisTool):
     Parses the test summary to extract pass count, failure count, error details,
     and the names of failing tests for structured root-cause feedback to the agent.
     """
-    name="run_pytest"
-    description=(
+
+    name = "run_pytest"
+    description = (
         "Run the pytest test suite and return structured results including "
         "pass count, failure count, failing test names, and error messages. "
         "Specify a target path to run a subset of tests."
     )
-    args_schema=PytestRunnerArgs
+    args_schema = PytestRunnerArgs
 
-    def _execute(self,args: PytestRunnerArgs) -> ToolResult:  # type: ignore[override]
-        from pathlib import Path
+    def __init__(
+        self,
+        workspace_root: Path | None = None,
+        sandbox: SandboxExecutor | None = None,
+        unsafe_local: bool = False,
+        policy: CommandPolicy | None = None,
+    ) -> None:
+        self.workspace_root = (workspace_root or Path.cwd()).resolve()
+        self.sandbox = sandbox or (
+            SubprocessSandbox() if unsafe_local else DockerSandbox(self.workspace_root)
+        )
+        self.policy = policy or CommandPolicy()
 
-        python_exe=sys.executable
-        cmd_parts=[f'"{python_exe}"',"-m","pytest",args.target,"--tb=short","-q"]
+    def _execute(self, args: PytestRunnerArgs) -> ToolResult:  # type: ignore[override]
+        try:
+            cwd = validate_path(args.cwd or ".", self.workspace_root)
+        except (PathTraversalError, ValueError) as exc:
+            return ToolResult.fail(str(exc))
+        python_exe = sys.executable if isinstance(self.sandbox, SubprocessSandbox) else "python"
+        cmd_parts = [python_exe, "-m", "pytest", args.target, "--tb=short", "-q"]
         if args.extra_args:
-            cmd_parts.append(args.extra_args)
-        command=" ".join(cmd_parts)
-
-        cwd=Path(args.cwd) if args.cwd else None
-        quota=ExecutionQuota(timeout_seconds=args.timeout_seconds)
-        result=_sandbox.execute_command(command,cwd=cwd,quota=quota)
+            try:
+                cmd_parts.extend(shlex.split(args.extra_args, posix=True))
+            except ValueError as exc:
+                return ToolResult.fail(f"Invalid pytest arguments: {exc}")
+        command = subprocess.list2cmdline(cmd_parts) if os.name == "nt" else shlex.join(cmd_parts)
+        decision = self.policy.evaluate(command, self.workspace_root)
+        if decision.tier != CommandTier.AUTO_ALLOW:
+            return ToolResult.fail(
+                f"Pytest command was blocked by command policy: {decision.reason}",
+                metadata={
+                    "policy_tier": decision.tier.value,
+                    "approval_required": decision.tier == CommandTier.REQUIRE_APPROVAL,
+                },
+            )
+        quota = ExecutionQuota(timeout_seconds=args.timeout_seconds)
+        result = self.sandbox.execute_command(command, cwd=cwd, quota=quota)
 
         if result.timed_out:
             return ToolResult.fail(
                 error=f"pytest timed out after {args.timeout_seconds} seconds. "
-                      f"Try narrowing the target path or increasing timeout_seconds.",
+                f"Try narrowing the target path or increasing timeout_seconds.",
                 metadata={"timed_out": True},
             )
 
-        combined=(result.stdout+"\n"+result.stderr).strip()
+        combined = (result.stdout + "\n" + result.stderr).strip()
 
         # Parse summary line: e.g. "5 passed, 2 failed, 1 error in 3.21s"
-        summary_match=re.search(
+        summary_match = re.search(
             r"([\d]+ passed)?[,\s]*([\d]+ failed)?[,\s]*([\d]+ error)?",
             combined,
         )
-        passed=0
-        failed=0
-        errors=0
+        passed = 0
+        failed = 0
+        errors = 0
         if summary_match:
-            passed=int(re.search(r"(\d+) passed",combined).group(1)) if re.search(r"(\d+) passed",combined) else 0
-            failed=int(re.search(r"(\d+) failed",combined).group(1)) if re.search(r"(\d+) failed",combined) else 0
-            errors=int(re.search(r"(\d+) error",combined).group(1)) if re.search(r"(\d+) error",combined) else 0
+            passed_match = re.search(r"(\d+) passed", combined)
+            failed_match = re.search(r"(\d+) failed", combined)
+            errors_match = re.search(r"(\d+) error", combined)
+            passed = int(passed_match.group(1)) if passed_match else 0
+            failed = int(failed_match.group(1)) if failed_match else 0
+            errors = int(errors_match.group(1)) if errors_match else 0
         # Extract failing test names
-        failing_tests=re.findall(r"FAILED\s+([\w/\\:.\-]+)",combined)
-        all_passed=result.exit_code == 0 and failed == 0 and errors == 0
-        summary=f"Tests: {passed} passed, {failed} failed, {errors} errors."
+        failing_tests = re.findall(r"FAILED\s+([\w/\\:.\-]+)", combined)
+        all_passed = result.exit_code == 0 and failed == 0 and errors == 0
+        summary = f"Tests: {passed} passed, {failed} failed, {errors} errors."
         if failing_tests:
-            summary += f"\nFailing tests:\n" + "\n".join(f"  - {t}" for t in failing_tests)
+            summary += "\nFailing tests:\n" + "\n".join(f"  - {t}" for t in failing_tests)
         return ToolResult(
             success=all_passed,
             output=combined,

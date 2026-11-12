@@ -1,0 +1,1 @@
+"""Palindrome verification utility."""

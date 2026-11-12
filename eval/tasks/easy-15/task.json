@@ -1,0 +1,5 @@
+{
+  "id": "easy-15",
+  "category": "feature",
+  "goal": "Implement `chunk_list(lst: list, size: int) -> list` in `chunker.py` splitting list into chunks of given size."
+}

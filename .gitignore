@@ -1,6 +1,8 @@
 # Environment & Secrets
 .env
 .env.*
+.env.local
+!aegis.toml
 !.env.example
 
 # Python & Virtual Environments
@@ -29,6 +31,9 @@ htmlcov/
 *.db
 *.db-wal
 *.db-shm
+
+# Logs
+*.log
 
 # IDE & OS
 .vscode/

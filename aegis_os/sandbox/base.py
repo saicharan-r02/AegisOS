@@ -1,19 +1,28 @@
-from abc import ABC,abstractmethod
+from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Optional
-from pydantic import BaseModel,Field
+
+from pydantic import BaseModel, Field
+
 from aegis_os.sandbox.quotas import ExecutionQuota
+
 
 class CommandResult(BaseModel):
     """
     The structured, immutable result of a sandbox command execution.
     All tool code MUST use this model, never raw strings from subprocess calls
     """
-    exit_code:int =Field(description="OS exit code. 0 is success, non-zero is failure.")
-    stdout:str =Field(description="Captured standard output, potentially truncated.")
-    stderr:str =Field(description="Captured standard error, potentially truncated.")
-    timed_out:bool =Field(default=False,description="True if the process was forcefully killed due to timeout.",)
-    output_truncated:bool =Field(default=False,description="True if combined stdout+stderr exceeded max_output_bytes.",)
+
+    exit_code: int = Field(description="OS exit code. 0 is success, non-zero is failure.")
+    stdout: str = Field(description="Captured standard output, potentially truncated.")
+    stderr: str = Field(description="Captured standard error, potentially truncated.")
+    timed_out: bool = Field(
+        default=False,
+        description="True if the process was forcefully killed due to timeout.",
+    )
+    output_truncated: bool = Field(
+        default=False,
+        description="True if combined stdout+stderr exceeded max_output_bytes.",
+    )
 
     @property
     def success(self) -> bool:
@@ -41,8 +50,8 @@ class SandboxExecutor(ABC):
     def execute_command(
         self,
         command: str,
-        cwd: Optional[Path] = None,
-        quota: Optional[ExecutionQuota] = None,
+        cwd: Path | None = None,
+        quota: ExecutionQuota | None = None,
     ) -> CommandResult:
         """
         Execute a shell command and return a structured result.

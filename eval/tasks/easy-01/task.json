@@ -1,0 +1,5 @@
+{
+  "id": "easy-01",
+  "category": "feature",
+  "goal": "Write a Python function `add(a, b)` in `math_utils.py` that returns the sum of two numbers."
+}

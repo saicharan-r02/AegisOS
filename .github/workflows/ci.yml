@@ -1,38 +1,71 @@
-name: AegisOS CI Pipeline
+name: AegisOS Enterprise CI Pipeline
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main,master,aegis-v2 ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ main,master,aegis-v2 ]
 
 jobs:
-  test:
-    name: Test Suite (${{ matrix.os }} - Python ${{ matrix.python-version }})
+  lint-and-typecheck:
+    name: Lint & Typecheck (Ubuntu - Python 3.12)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+      - name: Install Linting & Typecheck Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ruff mypy
+          python -m pip install -r requirements.txt
+      - name: Ruff Linter
+        run: ruff check aegis_os/ tests/
+      - name: Mypy Static Type Analysis
+        run: mypy aegis_os/ --ignore-missing-imports
+
+  frontend-build:
+    name: Dashboard Build Check (Node 20)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
+      - name: Build React Dashboard
+        run: |
+          cd web
+          npm ci
+          npm run build
+
+  test-suite:
+    name: Tests (${{ matrix.os }} - Python ${{ matrix.python-version }})
+    needs: [lint-and-typecheck, frontend-build]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ ubuntu-latest, windows-latest ]
         python-version: [ "3.11", "3.12" ]
-
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
           cache: "pip"
-
-      - name: Install Dependencies
+      - name: Install Package & Test Dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install pytest pytest-asyncio anyio
+          python -m pip install pytest pytest-asyncio pytest-cov anyio hypothesis
           python -m pip install -r requirements.txt
           python -m pip install -e .
-
-      - name: Run Pytest Test Suite
+      - name: Run Adversarial Security Suite
         run: |
-          python -m pytest tests/ -v
+          python -m pytest tests/unit/test_adversarial_security.py tests/unit/test_command_policy.py -v
+      - name: Run Full Unit & Integration Suite with Coverage
+        run: |
+          python -m pytest tests/ -v --cov=aegis_os/kernel --cov=aegis_os/sandbox --cov=aegis_os/tools --cov-report=term-missing

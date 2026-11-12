@@ -1,21 +1,45 @@
 from __future__ import annotations
-from pathlib import Path
+
 import time
-from typing import TYPE_CHECKING,Any,Optional
 import uuid
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 from aegis_os.kernel.checkpoint import CheckpointStore
-from aegis_os.kernel.events import EventBus,MissionStatusChangedEvent,StateTransitionEvent,StepCompletedEvent,StepStartedEvent
-from aegis_os.kernel.exceptions import InvalidTransitionError,MaxStepsExceededError,StagnationError
-from aegis_os.kernel.state import AgentRole,AgentState,DAGNode,MissionDAG,MissionPhase,MissionStatus,MissionSummary,RepairCycleRecord,StepRecord,StepStatus
+from aegis_os.kernel.context import redact_sensitive_text, redact_sensitive_value
+from aegis_os.kernel.events import (
+    EventBus,
+    MissionStatusChangedEvent,
+    StateTransitionEvent,
+    StepCompletedEvent,
+    StepStartedEvent,
+)
+from aegis_os.kernel.exceptions import (
+    InvalidTransitionError,
+    MaxStepsExceededError,
+    StagnationError,
+)
+from aegis_os.kernel.state import (
+    AgentRole,
+    AgentState,
+    DAGNode,
+    MissionDAG,
+    MissionPhase,
+    MissionStatus,
+    MissionSummary,
+    RepairCycleRecord,
+    StepRecord,
+    StepStatus,
+)
 from aegis_os.tools.base import ToolResult
 
 if TYPE_CHECKING:
-    from aegis_os.agents.cto.agent import AegisCTO,MissionPlan
+    from aegis_os.agents.cto.agent import AegisCTO, MissionPlan
     from aegis_os.agents.dev.agent import AegisDev
     from aegis_os.agents.ops.agent import AegisOps
-    from aegis_os.agents.qa.agent import AegisQA,TestReport
-    from aegis_os.agents.sec.agent import AegisSec,SecurityReport
+    from aegis_os.agents.qa.agent import AegisQA, TestReport
+    from aegis_os.agents.sec.agent import AegisSec, SecurityReport
+
 
 class StateMachine:
     """
@@ -23,18 +47,35 @@ class StateMachine:
     Enforces the central rule: the LLM decides intent; the state machine
     governs progression, isolation, budget enforcement, and rollbacks.
     """
-    def __init__(self,state: AgentState,checkpoint_store: Optional[CheckpointStore] = None,event_bus: Optional[EventBus] = None,) -> None:
-        self.state=state
-        self.checkpoint_store=checkpoint_store
-        self.event_bus=event_bus
+
+    def __init__(
+        self,
+        state: AgentState,
+        checkpoint_store: CheckpointStore | None = None,
+        event_bus: EventBus | None = None,
+    ) -> None:
+        self.state = state
+        self.checkpoint_store = checkpoint_store
+        self.event_bus = event_bus
 
     def start_mission(self) -> None:
         if self.state.status != MissionStatus.PENDING:
-            raise InvalidTransitionError(from_state=self.state.status.value,to_state=MissionStatus.RUNNING.value,reason="Mission can only be started from PENDING state.")
+            raise InvalidTransitionError(
+                from_state=self.state.status.value,
+                to_state=MissionStatus.RUNNING.value,
+                reason="Mission can only be started from PENDING state.",
+            )
 
-        old_status=self.state.status
-        self.state.status=MissionStatus.RUNNING
-        self._emit(MissionStatusChangedEvent(session_id=self.state.session_id,old_status=old_status,new_status=self.state.status,goal=self.state.mission_goal))
+        old_status = self.state.status
+        self.state.status = MissionStatus.RUNNING
+        self._emit(
+            MissionStatusChangedEvent(
+                session_id=self.state.session_id,
+                old_status=old_status,
+                new_status=self.state.status,
+                goal=self.state.mission_goal,
+            )
+        )
         self._persist()
 
     def transition_role(self, new_role: AgentRole) -> None:
@@ -43,63 +84,91 @@ class StateMachine:
             raise InvalidTransitionError(
                 from_state=self.state.status.value,
                 to_state=new_role.value,
-                reason="Cannot transition roles on a terminated mission."
+                reason="Cannot transition roles on a terminated mission.",
             )
 
-        old_role=self.state.active_role
-        self.state.active_role=new_role
-        self._emit(StateTransitionEvent(session_id=self.state.session_id,from_role=old_role,to_role=new_role,step_index=self.state.current_step_index))
+        old_role = self.state.active_role
+        self.state.active_role = new_role
+        self._emit(
+            StateTransitionEvent(
+                session_id=self.state.session_id,
+                from_role=old_role,
+                to_role=new_role,
+                step_index=self.state.current_step_index,
+            )
+        )
         self._persist()
 
-    def begin_step(self,task_description: str,role: Optional[AgentRole] = None,tool_name: Optional[str] = None,tool_args: Optional[dict[str, Any]] = None) -> StepRecord:
+    def begin_step(
+        self,
+        task_description: str,
+        role: AgentRole | None = None,
+        tool_name: str | None = None,
+        tool_args: dict[str, Any] | None = None,
+    ) -> StepRecord:
         """
         Allocate and initiate a new step in the mission.
         Enforces execution budgets and stagnation limits before proceeding.
         """
         if self.state.is_terminal:
-            raise InvalidTransitionError(from_state=self.state.status.value,to_state="BEGIN_STEP",reason="Cannot execute steps on a terminated mission.")
+            raise InvalidTransitionError(
+                from_state=self.state.status.value,
+                to_state="BEGIN_STEP",
+                reason="Cannot execute steps on a terminated mission.",
+            )
         if self.state.current_step_index >= self.state.max_steps:
             self.fail_mission("Max execution step budget exceeded.")
             raise MaxStepsExceededError(
-                current_steps=self.state.current_step_index,
-                max_steps=self.state.max_steps
+                current_steps=self.state.current_step_index, max_steps=self.state.max_steps
             )
 
         if self.state.consecutive_failures >= self.state.stagnation_threshold:
-            current_role=(role or self.state.active_role or AgentRole.CTO).value
+            current_role = (role or self.state.active_role or AgentRole.CTO).value
             self.fail_mission("Execution halted due to repeated agent stagnation.")
             raise StagnationError(
                 failure_count=self.state.consecutive_failures,
                 threshold=self.state.stagnation_threshold,
-                role=current_role
+                role=current_role,
             )
 
-        target_role=role or self.state.active_role or AgentRole.CTO
-        step=self.state.add_step(role=target_role,task_description=task_description,tool_name=tool_name,tool_args=tool_args)
-        self._emit(StepStartedEvent(session_id=self.state.session_id,step=step))
+        target_role = role or self.state.active_role or AgentRole.CTO
+        step = self.state.add_step(
+            role=target_role,
+            task_description=task_description,
+            tool_name=tool_name,
+            tool_args=tool_args,
+        )
+        self._emit(StepStartedEvent(session_id=self.state.session_id, step=step))
         self._persist()
         return step
 
-    def end_step(self,tool_result: Optional[ToolResult] = None,error: Optional[str] = None,status: Optional[StepStatus] = None,) -> StepRecord:
+    def end_step(
+        self,
+        tool_result: ToolResult | None = None,
+        error: str | None = None,
+        status: StepStatus | None = None,
+    ) -> StepRecord:
         """
         Complete the currently running step and evaluate status outcomes.
         """
-        completed_step=self.state.complete_current_step(tool_result=tool_result,error=error,status=status)
-        self._emit(StepCompletedEvent(session_id=self.state.session_id,step=completed_step))
+        completed_step = self.state.complete_current_step(
+            tool_result=tool_result, error=error, status=status
+        )
+        self._emit(StepCompletedEvent(session_id=self.state.session_id, step=completed_step))
         self._persist()
         return completed_step
 
     def complete_mission(self, reason: str = "Mission goal accomplished.") -> None:
-        old_status=self.state.status
-        self.state.status=MissionStatus.COMPLETED
-        self.state.context_variables["completion_reason"]=reason
+        old_status = self.state.status
+        self.state.status = MissionStatus.COMPLETED
+        self.state.context_variables["completion_reason"] = reason
 
         self._emit(
             MissionStatusChangedEvent(
                 session_id=self.state.session_id,
                 old_status=old_status,
                 new_status=self.state.status,
-                goal=self.state.mission_goal
+                goal=self.state.mission_goal,
             )
         )
         self._persist()
@@ -114,7 +183,7 @@ class StateMachine:
                 session_id=self.state.session_id,
                 old_status=old_status,
                 new_status=self.state.status,
-                goal=self.state.mission_goal
+                goal=self.state.mission_goal,
             )
         )
         self._persist()
@@ -124,18 +193,18 @@ class StateMachine:
             raise InvalidTransitionError(
                 from_state=self.state.status.value,
                 to_state=MissionStatus.PAUSED.value,
-                reason="Cannot pause a terminated mission."
+                reason="Cannot pause a terminated mission.",
             )
 
-        old_status=self.state.status
-        self.state.status=MissionStatus.PAUSED
+        old_status = self.state.status
+        self.state.status = MissionStatus.PAUSED
 
         self._emit(
             MissionStatusChangedEvent(
                 session_id=self.state.session_id,
                 old_status=old_status,
                 new_status=self.state.status,
-                goal=self.state.mission_goal
+                goal=self.state.mission_goal,
             )
         )
         self._persist()
@@ -145,55 +214,57 @@ class StateMachine:
             raise InvalidTransitionError(
                 from_state=self.state.status.value,
                 to_state=MissionStatus.RUNNING.value,
-                reason="Can only resume from PAUSED state."
+                reason="Can only resume from PAUSED state.",
             )
 
-        old_status=self.state.status
-        self.state.status=MissionStatus.RUNNING
+        old_status = self.state.status
+        self.state.status = MissionStatus.RUNNING
 
         self._emit(
             MissionStatusChangedEvent(
                 session_id=self.state.session_id,
                 old_status=old_status,
                 new_status=self.state.status,
-                goal=self.state.mission_goal
+                goal=self.state.mission_goal,
             )
         )
         self._persist()
 
-    def abort_mission(self,reason: str = "Aborted by operator.") -> None:
-        old_status=self.state.status
-        self.state.status=MissionStatus.ABORTED
-        self.state.context_variables["abort_reason"]=reason
+    def abort_mission(self, reason: str = "Aborted by operator.") -> None:
+        old_status = self.state.status
+        self.state.status = MissionStatus.ABORTED
+        self.state.context_variables["abort_reason"] = reason
 
         self._emit(
             MissionStatusChangedEvent(
                 session_id=self.state.session_id,
                 old_status=old_status,
                 new_status=self.state.status,
-                goal=self.state.mission_goal
+                goal=self.state.mission_goal,
             )
         )
         self._persist()
 
-    def rollback(self,target_step_index: int) -> AgentState:
+    def rollback(self, target_step_index: int) -> AgentState:
         if not self.checkpoint_store:
             raise RuntimeError("Cannot rollback without a configured CheckpointStore.")
 
-        restored_state=self.checkpoint_store.rollback_to_step(session_id=self.state.session_id,target_step_index=target_step_index)
-        self.state=restored_state
+        restored_state = self.checkpoint_store.rollback_to_step(
+            session_id=self.state.session_id, target_step_index=target_step_index
+        )
+        self.state = restored_state
 
         self._emit(
             MissionStatusChangedEvent(
                 session_id=self.state.session_id,
                 old_status=MissionStatus.RUNNING,
                 new_status=self.state.status,
-                goal=self.state.mission_goal
+                goal=self.state.mission_goal,
             )
         )
         return self.state
 
-    def _emit(self,event: Any) -> None:
+    def _emit(self, event: Any) -> None:
         if self.event_bus:
             self.event_bus.publish(event)
 
@@ -202,8 +273,8 @@ class StateMachine:
             self.checkpoint_store.save_checkpoint(self.state)
 
 
-def _resolve_role(role_str:str)->AgentRole:
-    normalized=role_str.strip().upper()
+def _resolve_role(role_str: str) -> AgentRole:
+    normalized = role_str.strip().upper()
     if "DEV" in normalized:
         return AgentRole.DEV
     elif "QA" in normalized:
@@ -216,71 +287,117 @@ def _resolve_role(role_str:str)->AgentRole:
         return AgentRole.CTO
     return AgentRole.DEV
 
+
 class MissionOrchestrator:
     def __init__(
         self,
-        workspace_root: Optional[Path]=None,
-        llm_provider: str="groq",
-        llm_model: Optional[str]=None,
-        state_machine: Optional[StateMachine]=None,
-        checkpoint_store: Optional[CheckpointStore]=None,
-        event_bus: Optional[EventBus]=None,
-        max_repair_cycles: int=3,
-        max_steps: int=50,
-        cto: Optional[AegisCTO]=None,
-        dev: Optional[AegisDev]=None,
-        qa: Optional[AegisQA]=None,
-        sec: Optional[AegisSec]=None,
-        ops: Optional[AegisOps]=None
+        workspace_root: Path | None = None,
+        llm_provider: str | None = None,
+        llm_model: str | None = None,
+        state_machine: StateMachine | None = None,
+        checkpoint_store: CheckpointStore | None = None,
+        event_bus: EventBus | None = None,
+        max_repair_cycles: int = 3,
+        max_steps: int = 50,
+        max_tokens: int | None = None,
+        max_cost_usd: float | None = None,
+        max_wall_seconds: float | None = None,
+        unsafe_local: bool = False,
+        cto: AegisCTO | None = None,
+        dev: AegisDev | None = None,
+        qa: AegisQA | None = None,
+        sec: AegisSec | None = None,
+        ops: AegisOps | None = None,
+        strategy: str = "waterfall",
     ) -> None:
-        self.workspace_root=Path(workspace_root) if workspace_root else Path.cwd()
-        self.llm_provider=llm_provider
-        self.llm_model=llm_model
-        self._custom_state_machine=state_machine
-        self.state_machine:Optional[StateMachine]=state_machine
-        self.checkpoint_store=checkpoint_store
-        self.event_bus=event_bus
-        self.max_repair_cycles=max_repair_cycles
-        self.max_steps=max_steps
+        self.workspace_root = Path(workspace_root) if workspace_root else Path.cwd()
+        self.llm_provider = llm_provider
+        self.llm_model = llm_model
+        self.strategy = strategy
+        self._custom_state_machine = state_machine
+        self.state_machine: StateMachine | None = state_machine
+        self.checkpoint_store = checkpoint_store
+        self.event_bus = event_bus
+        self.max_repair_cycles = max_repair_cycles
+        self.max_steps = max_steps
+        from aegis_os.kernel.llm import load_runtime_config
 
-        self.cto=cto
-        self.dev=dev
-        self.qa=qa
-        self.sec=sec
-        self.ops=ops
+        runtime_config = load_runtime_config()
+        self.max_tokens = max_tokens if max_tokens is not None else runtime_config.max_tokens
+        self.max_cost_usd = (
+            max_cost_usd if max_cost_usd is not None else runtime_config.max_cost_usd
+        )
+        self.max_wall_seconds = (
+            max_wall_seconds if max_wall_seconds is not None else runtime_config.max_wall_seconds
+        )
+        self.unsafe_local = unsafe_local
+
+        self.cto = cto
+        self.dev = dev
+        self.qa = qa
+        self.sec = sec
+        self.ops = ops
 
     def _initialize_agents(self) -> None:
         from aegis_os.agents.cto.agent import AegisCTO
         from aegis_os.agents.dev.agent import AegisDev
+        from aegis_os.agents.ops.agent import AegisOps
         from aegis_os.agents.qa.agent import AegisQA
         from aegis_os.agents.sec.agent import AegisSec
-        from aegis_os.agents.ops.agent import AegisOps
-        
-        if not self.cto: self.cto=AegisCTO(workspace_root=self.workspace_root,llm_provider=self.llm_provider,llm_model=self.llm_model)
-        if not self.dev: self.dev=AegisDev(workspace_root=self.workspace_root,llm_provider=self.llm_provider,llm_model=self.llm_model)
-        if not self.qa: self.qa=AegisQA(workspace_root=self.workspace_root,llm_provider=self.llm_provider,llm_model=self.llm_model)
-        if not self.sec: self.sec=AegisSec(workspace_root=self.workspace_root,llm_provider=self.llm_provider,llm_model=self.llm_model)
-        if not self.ops: self.ops=AegisOps(workspace_root=self.workspace_root,llm_provider=self.llm_provider,llm_model=self.llm_model)
 
-    def _sync_agents_with_state_machine(self,sm:StateMachine)->None:
-        for agent in (self.cto,self.dev,self.qa,self.sec,self.ops):
-            if agent and hasattr(agent,"state_machine"):
-                agent.state_machine=sm
+        if not self.cto:
+            self.cto = AegisCTO(
+                workspace_root=self.workspace_root,
+                llm_provider=self.llm_provider,
+                llm_model=self.llm_model,
+            )
+        if not self.dev:
+            self.dev = AegisDev(
+                workspace_root=self.workspace_root,
+                llm_provider=self.llm_provider,
+                llm_model=self.llm_model,
+                unsafe_local=self.unsafe_local,
+            )
+        if not self.qa:
+            self.qa = AegisQA(
+                workspace_root=self.workspace_root,
+                llm_provider=self.llm_provider,
+                llm_model=self.llm_model,
+                unsafe_local=self.unsafe_local,
+            )
+        if not self.sec:
+            self.sec = AegisSec(
+                workspace_root=self.workspace_root,
+                llm_provider=self.llm_provider,
+                llm_model=self.llm_model,
+            )
+        if not self.ops:
+            self.ops = AegisOps(
+                workspace_root=self.workspace_root,
+                llm_provider=self.llm_provider,
+                llm_model=self.llm_model,
+                unsafe_local=self.unsafe_local,
+            )
 
-    def _get_agent_for_role(self,role:AgentRole):
-        if role==AgentRole.CTO:
+    def _sync_agents_with_state_machine(self, sm: StateMachine) -> None:
+        for agent in (self.cto, self.dev, self.qa, self.sec, self.ops):
+            if agent and hasattr(agent, "state_machine"):
+                agent.state_machine = sm
+
+    def _get_agent_for_role(self, role: AgentRole):
+        if role == AgentRole.CTO:
             return self.cto
-        elif role==AgentRole.DEV:
+        elif role == AgentRole.DEV:
             return self.dev
-        elif role==AgentRole.QA:
+        elif role == AgentRole.QA:
             return self.qa
-        elif role==AgentRole.SEC:
+        elif role == AgentRole.SEC:
             return self.sec
-        elif role==AgentRole.OPS:
+        elif role == AgentRole.OPS:
             return self.ops
         return self.dev
 
-    def execute_mission(self,goal:str)->MissionSummary:
+    def execute_mission(self, goal: str) -> MissionSummary:
         """
         Execute an end-to-end engineering mission through all department phases.
         Args:
@@ -288,28 +405,54 @@ class MissionOrchestrator:
         Returns:
             MissionSummary with final status,reports,and repair records.
         """
-        start_time=time.time()
-        plan:Optional[MissionPlan]=None
-        tasks_executed:list[str]=[]
-        repair_cycles:int=0
-        repair_history:list[RepairCycleRecord]=[]
-        qa_report:Optional[TestReport]=None
-        sec_report:Optional[SecurityReport]=None
-        ops_report:Optional[str]=None
+        goal = redact_sensitive_text(goal)
+        if self.strategy == "adaptive":
+            from aegis_os.orchestration.adaptive import AdaptiveOrchestrator
+
+            adaptive = AdaptiveOrchestrator(
+                workspace_root=self.workspace_root,
+                llm_provider=self.llm_provider,
+                llm_model=self.llm_model,
+                state_machine=self._custom_state_machine or self.state_machine,
+                checkpoint_store=self.checkpoint_store,
+                event_bus=self.event_bus,
+                max_repair_cycles=self.max_repair_cycles,
+                max_steps=self.max_steps,
+                max_tokens=self.max_tokens,
+                max_cost_usd=self.max_cost_usd,
+                max_wall_seconds=self.max_wall_seconds,
+                unsafe_local=self.unsafe_local,
+                cto=self.cto,
+                dev=self.dev,
+                qa=self.qa,
+                sec=self.sec,
+                ops=self.ops,
+            )
+            return adaptive.execute_mission(goal)
+
+        start_time = time.time()
+        plan: MissionPlan | None = None
+        tasks_executed: list[str] = []
+        repair_cycles: int = 0
+        repair_history: list[RepairCycleRecord] = []
+        qa_report: TestReport | None = None
+        sec_report: SecurityReport | None = None
+        ops_report: str | None = None
 
         if self._custom_state_machine is not None:
-            self.state_machine=self._custom_state_machine
+            self.state_machine = self._custom_state_machine
         else:
-            state=AgentState(
+            state = AgentState(
                 session_id=str(uuid.uuid4()),
                 mission_goal=goal,
                 status=MissionStatus.PENDING,
-                max_steps=self.max_steps
+                max_steps=self.max_steps,
+                max_tokens=self.max_tokens,
+                max_cost_usd=self.max_cost_usd,
+                max_wall_seconds=self.max_wall_seconds,
             )
-            self.state_machine=StateMachine(
-                state=state,
-                checkpoint_store=self.checkpoint_store,
-                event_bus=self.event_bus
+            self.state_machine = StateMachine(
+                state=state, checkpoint_store=self.checkpoint_store, event_bus=self.event_bus
             )
 
         self.state_machine._persist()
@@ -317,16 +460,25 @@ class MissionOrchestrator:
         try:
             self._initialize_agents()
             self._sync_agents_with_state_machine(self.state_machine)
-            if self.state_machine.state.status==MissionStatus.PENDING:
+            assert self.cto is not None
+            assert self.dev is not None
+            assert self.qa is not None
+            assert self.sec is not None
+            assert self.ops is not None
+            if self.state_machine.state.status == MissionStatus.PENDING:
                 self.state_machine.start_mission()
 
-            self.state_machine.state.context_variables["phase"]=MissionPhase.PLANNING.value
+            self.state_machine.state.context_variables["phase"] = MissionPhase.PLANNING.value
             self.state_machine.transition_role(AgentRole.CTO)
 
-            plan=self.cto.plan_mission(goal)
-            self.state_machine.state.context_variables["mission_plan"]=plan.model_dump()
+            plan = self.cto.plan_mission(goal)
+            self.state_machine.state.context_variables["mission_plan"] = redact_sensitive_value(
+                plan.model_dump()
+            )
+            if self.state_machine.state.context_variables.get("partial_result_reason"):
+                raise RuntimeError("Mission stopped at the configured budget.")
 
-            dag=MissionDAG()
+            dag = MissionDAG()
             for task in plan.tasks:
                 dag.add_node(
                     DAGNode(
@@ -336,8 +488,8 @@ class MissionOrchestrator:
                         metadata={
                             "title": task.title,
                             "priority": task.priority,
-                            "acceptance_criteria": task.acceptance_criteria
-                        }
+                            "acceptance_criteria": task.acceptance_criteria,
+                        },
                     )
                 )
 
@@ -346,22 +498,22 @@ class MissionOrchestrator:
                     if dep_id in dag.nodes:
                         dag.add_edge(from_node=dep_id, to_node=task.task_id)
 
-            sorted_nodes=dag.topological_sort()
-            self.state_machine.state.context_variables["dag"]=dag.model_dump()
+            sorted_nodes = dag.topological_sort()
+            self.state_machine.state.context_variables["dag"] = dag.model_dump()
 
-            self.state_machine.state.context_variables["phase"]=MissionPhase.EXECUTION.value
+            self.state_machine.state.context_variables["phase"] = MissionPhase.EXECUTION.value
 
             for node in sorted_nodes:
                 if self.state_machine.state.is_terminal:
                     break
 
-                agent=self._get_agent_for_role(node.role)
+                agent = self._get_agent_for_role(node.role)
                 self.state_machine.transition_role(node.role)
 
                 task_instruction = (
-                    f"Execute Planned Task [{node.node_id}]: {node.metadata.get('title','')}\n"
+                    f"Execute Planned Task [{node.node_id}]: {node.metadata.get('title', '')}\n"
                     f"Description: {node.task}\n"
-                    f"Acceptance Criteria: {node.metadata.get('acceptance_criteria',[])}\n\n"
+                    f"Acceptance Criteria: {node.metadata.get('acceptance_criteria', [])}\n\n"
                     f"Overall Mission Goal: {goal}\n"
                     f"Workspace Root: {self.workspace_root}\n\n"
                     f"IMPORTANT: Your FIRST action must be to call write_file to implement the required code. "
@@ -369,26 +521,36 @@ class MissionOrchestrator:
                 )
                 agent.run(task_instruction, max_iterations=15)
                 tasks_executed.append(node.node_id)
+                if self.state_machine.state.context_variables.get("partial_result_reason"):
+                    raise RuntimeError("Mission stopped at the configured budget.")
 
-            self.state_machine.state.context_variables["phase"]=MissionPhase.VERIFICATION.value
+            self.state_machine.state.context_variables["phase"] = MissionPhase.VERIFICATION.value
 
             while not self.state_machine.state.is_terminal:
                 self.state_machine.transition_role(AgentRole.QA)
                 qa_report = self.qa.run_and_report()
-                self.state_machine.state.context_variables["qa_report"]=qa_report.model_dump()
+                self.state_machine.state.context_variables["qa_report"] = qa_report.model_dump()
+                if self.state_machine.state.context_variables.get("partial_result_reason"):
+                    raise RuntimeError("Mission stopped at the configured budget.")
 
                 self.state_machine.transition_role(AgentRole.SEC)
                 sec_report = self.sec.audit()
-                self.state_machine.state.context_variables["sec_report"]=sec_report.model_dump()
-                qa_failed = (qa_report.failed>0) or (qa_report.errors>0)
-                sec_failed = (sec_report.summary.critical>0) or (sec_report.summary.high>0)
+                self.state_machine.state.context_variables["sec_report"] = sec_report.model_dump()
+                if self.state_machine.state.context_variables.get("partial_result_reason"):
+                    raise RuntimeError("Mission stopped at the configured budget.")
+                qa_failed = (qa_report.failed > 0) or (qa_report.errors > 0)
+                sec_failed = (
+                    bool(sec_report.report_error)
+                    or (sec_report.summary.critical > 0)
+                    or (sec_report.summary.high > 0)
+                )
 
                 if not qa_failed and not sec_failed:
                     if repair_history:
-                        repair_history[-1].resolved=True
+                        repair_history[-1].resolved = True
                     break
-                issues: list[str]=[]
-                triggers: list[str]=[]
+                issues: list[str] = []
+                triggers: list[str] = []
 
                 if qa_failed:
                     triggers.append("QA_FAILURES")
@@ -404,15 +566,17 @@ class MissionOrchestrator:
 
                 if sec_failed:
                     triggers.append("SECURITY_VULNERABILITIES")
+                    if sec_report.report_error:
+                        issues.append(f"SEC report failed: {sec_report.report_error}")
                     for sf in sec_report.findings:
-                        if sf.severity in ("CRITICAL","HIGH"):
+                        if sf.severity in ("CRITICAL", "HIGH"):
                             issues.append(
                                 f"SEC [{sf.severity}] {sf.category} at {sf.file}:{sf.line} - "
                                 f"{sf.description}. Remediation: {sf.remediation}"
                             )
 
-                if repair_cycles>=self.max_repair_cycles:
-                    fail_msg=(
+                if repair_cycles >= self.max_repair_cycles:
+                    fail_msg = (
                         f"Closed-loop repair budget exceeded ({self.max_repair_cycles} cycles). "
                         f"Remaining unresolved issues: {len(issues)}"
                     )
@@ -423,47 +587,56 @@ class MissionOrchestrator:
                             trigger="+".join(triggers),
                             issues_detected=issues,
                             dev_patch_summary=None,
-                            resolved=False
+                            resolved=False,
                         )
                     )
                     break
 
-                repair_cycles+=1
-                self.state_machine.state.context_variables["phase"]=MissionPhase.REPAIR.value
+                repair_cycles += 1
+                self.state_machine.state.context_variables["phase"] = MissionPhase.REPAIR.value
                 self.state_machine.transition_role(AgentRole.DEV)
 
-                repair_prompt=(
+                repair_prompt = (
                     f"## Verification Feedback (Repair Cycle {repair_cycles}/{self.max_repair_cycles})\n"
                     f"The following automated verification issues were detected:\n"
                     + "\n".join(f"- {issue}" for issue in issues)
                     + "\n\nPlease analyze root causes, modify the code to resolve these failures, and commit the fixes."
                 )
-                dev_patch_summary=self.dev.run(repair_prompt)
+                dev_patch_summary = self.dev.run(repair_prompt)
+                if self.state_machine.state.context_variables.get("partial_result_reason"):
+                    raise RuntimeError("Mission stopped at the configured budget.")
                 repair_history.append(
                     RepairCycleRecord(
                         cycle_index=repair_cycles,
                         trigger="+".join(triggers),
                         issues_detected=issues,
                         dev_patch_summary=dev_patch_summary,
-                        resolved=False
+                        resolved=False,
                     )
                 )
 
             if not self.state_machine.state.is_terminal:
-                self.state_machine.state.context_variables["phase"]=MissionPhase.OPERATIONS.value
+                self.state_machine.state.context_variables["phase"] = MissionPhase.OPERATIONS.value
                 self.state_machine.transition_role(AgentRole.OPS)
-                ops_report=self.ops.health_check()
-                self.state_machine.state.context_variables["ops_report"]=ops_report
+                ops_report = self.ops.health_check()
+                self.state_machine.state.context_variables["ops_report"] = ops_report
+                if self.state_machine.state.context_variables.get("partial_result_reason"):
+                    raise RuntimeError("Mission stopped at the configured budget.")
 
-            self.state_machine.state.context_variables["phase"]=MissionPhase.FINALIZATION.value
+            self.state_machine.state.context_variables["phase"] = MissionPhase.FINALIZATION.value
             if not self.state_machine.state.is_terminal:
                 self.state_machine.complete_mission(
                     reason=f"Mission '{goal}' completed successfully through all departments."
                 )
 
         except Exception as exc:
-            if not self.state_machine.state.is_terminal:
-                self.state_machine.fail_mission(f"Mission failed with error: {exc}")
+            partial_reason = self.state_machine.state.context_variables.get("partial_result_reason")
+            if partial_reason and self.state_machine.state.status != MissionStatus.PAUSED:
+                self.state_machine.pause_mission()
+            elif not self.state_machine.state.is_terminal:
+                self.state_machine.fail_mission(
+                    redact_sensitive_text(f"Mission failed with error: {exc}")
+                )
             duration = round(time.time() - start_time, 2)
             return MissionSummary(
                 session_id=self.state_machine.state.session_id,
@@ -478,10 +651,14 @@ class MissionOrchestrator:
                 sec_report=sec_report,
                 ops_report=ops_report,
                 duration_seconds=duration,
-                error=str(exc)
+                tokens_used=self.state_machine.state.tokens_used,
+                cost_used_usd=self.state_machine.state.cost_used_usd,
+                error=redact_sensitive_text(
+                    f"Partial result: {partial_reason}" if partial_reason else str(exc)
+                ),
             )
 
-        duration=round(time.time()-start_time,2)
+        duration = round(time.time() - start_time, 2)
         return MissionSummary(
             session_id=self.state_machine.state.session_id,
             goal=goal,
@@ -494,5 +671,7 @@ class MissionOrchestrator:
             qa_report=qa_report,
             sec_report=sec_report,
             ops_report=ops_report,
-            duration_seconds=duration
+            duration_seconds=duration,
+            tokens_used=self.state_machine.state.tokens_used,
+            cost_used_usd=self.state_machine.state.cost_used_usd,
         )

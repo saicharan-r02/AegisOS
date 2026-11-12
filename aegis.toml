@@ -1,0 +1,110 @@
+# Model routing — NVIDIA NIM hosted API.
+# Optimized & verified with live tool-calling tests on 2026-11-12.
+#
+# Primary High-Capacity (Planning & Security):
+#   - nvidia/nemotron-3-ultra-550b-a55b (550B Flagship, Native Tools verified)
+# Primary Fast Execution (Code & Operations):
+#   - nvidia/nemotron-3.5-bolt-e4b (0.3s Latency, Native Tools verified)
+# Specialized Coding Secondary:
+#   - poolside/laguna-xs-2.1 (1.4s Latency, Native Tools verified)
+# High-Reliability Reasoning & Verification:
+#   - nvidia/nemotron-3.5-lightning-30b-a3b (30B Reasoning, Native Tools verified)
+
+[llm]
+default_provider = "nvidia"
+default_model = "nvidia/nemotron-3-ultra-550b-a55b"
+temperature = 0.0
+request_timeout_seconds = 300.0
+max_retries = 3
+retry_base_seconds = 1.0
+retry_max_seconds = 16.0
+circuit_cooldown_seconds = 30.0
+max_tokens = 320000
+max_cost_usd = 0
+max_wall_seconds = 1800.0
+max_completion_tokens = 4096
+
+
+[llm.roles.CTO]
+provider = "nvidia"
+model = "nvidia/nemotron-3-ultra-550b-a55b"
+context_tokens = 320000
+max_tool_output_tokens = 20000
+fallback = [
+  { provider = "nvidia", model = "nvidia/nemotron-3.5-lightning-30b-a3b" },
+  { provider = "nvidia", model = "nvidia/nemotron-3.5-bolt-e4b" },
+]
+
+[llm.roles.DEV]
+provider = "nvidia"
+model = "nvidia/nemotron-3.5-bolt-e4b"
+context_tokens = 320000
+max_tool_output_tokens = 20000
+fallback = [
+  { provider = "nvidia", model = "poolside/laguna-xs-2.1" },
+  { provider = "nvidia", model = "nvidia/nemotron-3.5-lightning-30b-a3b" },
+]
+
+[llm.roles.QA]
+provider = "nvidia"
+model = "nvidia/nemotron-3.5-lightning-30b-a3b"
+context_tokens = 320000
+max_tool_output_tokens = 15000
+fallback = [
+  { provider = "nvidia", model = "nvidia/nemotron-3.5-bolt-e4b" },
+  { provider = "nvidia", model = "poolside/laguna-xs-2.1" },
+]
+
+[llm.roles.SEC]
+provider = "nvidia"
+model = "nvidia/nemotron-3-ultra-550b-a55b"
+context_tokens = 320000
+max_tool_output_tokens = 15000
+fallback = [
+  { provider = "nvidia", model = "nvidia/nemotron-3.5-lightning-30b-a3b" },
+  { provider = "nvidia", model = "nvidia/nemotron-3.5-bolt-e4b" },
+]
+
+[llm.roles.OPS]
+provider = "nvidia"
+model = "nvidia/nemotron-3.5-bolt-e4b"
+context_tokens = 320000
+max_tool_output_tokens = 15000
+fallback = [
+  { provider = "nvidia", model = "poolside/laguna-xs-2.1" },
+  { provider = "nvidia", model = "nvidia/nemotron-3.5-lightning-30b-a3b" },
+]
+
+[llm.roles.REVIEWER]
+provider = "nvidia"
+model = "nvidia/nemotron-3.5-lightning-30b-a3b"
+context_tokens = 320000
+max_tool_output_tokens = 20000
+fallback = [
+  { provider = "nvidia", model = "nvidia/nemotron-3.5-bolt-e4b" },
+  { provider = "nvidia", model = "poolside/laguna-xs-2.1" },
+]
+
+[llm.roles.EXPLORER]
+provider = "nvidia"
+model = "nvidia/nemotron-3.5-bolt-e4b"
+context_tokens = 320000
+max_tool_output_tokens = 15000
+fallback = [
+  { provider = "nvidia", model = "poolside/laguna-xs-2.1" },
+  { provider = "nvidia", model = "nvidia/nemotron-3-ultra-550b-a55b" },
+]
+
+[llm.roles.SUMMARIZER]
+provider = "nvidia"
+model = "nvidia/nemotron-3.5-bolt-e4b"
+context_tokens = 320000
+max_tool_output_tokens = 10000
+fallback = [
+  { provider = "nvidia", model = "poolside/laguna-xs-2.1" },
+  { provider = "nvidia", model = "nvidia/nemotron-3.5-lightning-30b-a3b" },
+]
+
+
+[security]
+allow_network_scanners = false

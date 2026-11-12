@@ -1,0 +1,5 @@
+{
+  "id": "fix-03",
+  "category": "bugfix",
+  "goal": "Fix `safe_nested_get` in `nested.py` to prevent KeyError when path keys are missing."
+}

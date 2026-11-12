@@ -1,12 +1,15 @@
-from typing import Any, Iterator, Optional
-from aegis_os.tools.base import BaseAegisTool
+from collections.abc import Iterator
+from typing import Any
+
+from aegis_os.tools.base import BaseAegisTool, ToolResult
+
 
 class ToolRegistry:
     """
     Central catalog of tools available to agents.
     Provides schema export for LLM function calling and prompt formatting.
     """
-    def __init__(self, tools: Optional[Any] = None) -> None:
+    def __init__(self, tools: Any | None = None) -> None:
         self._tools: dict[str, BaseAegisTool] = {}
         if isinstance(tools, ToolRegistry):
             self._tools = dict(tools._tools)
@@ -29,7 +32,7 @@ class ToolRegistry:
             )
         self._tools[tool.name]=tool
 
-    def get(self, name: str) -> Optional[BaseAegisTool]:
+    def get(self, name: str) -> BaseAegisTool | None:
         """Look up a tool by its unique name."""
         return self._tools.get(name)
 
@@ -40,6 +43,11 @@ class ToolRegistry:
                 f"Tool '{name}' is not registered. Available tools: {list(self._tools.keys())}"
             )
         return self._tools[name]
+
+    def call(self, name: str, **kwargs: Any) -> ToolResult:
+        """Convenience method to execute a registered tool by name with keyword arguments."""
+        tool = self.get(name)
+        return tool.run(kwargs)
 
     def list_tools(self) -> list[BaseAegisTool]:
         """Return all registered tool instances."""

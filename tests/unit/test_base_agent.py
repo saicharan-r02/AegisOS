@@ -1,14 +1,25 @@
-from typing import Any,List,Optional
-import pytest
+from collections.abc import Sequence
+from threading import Barrier
+from typing import Any
+
 from langchain_core.callbacks import CallbackManagerForLLMRun
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import AIMessage,BaseMessage
-from langchain_core.outputs import ChatGeneration,ChatResult
-from pydantic import BaseModel,Field
-from aegis_os.agents.base_agent import AgentIntent,BaseAgent,parse_agent_response
-from aegis_os.kernel.state import AgentRole,AgentState,MissionStatus,StepStatus
+from langchain_core.messages import AIMessage, BaseMessage
+from langchain_core.outputs import ChatGeneration, ChatResult
+from pydantic import BaseModel, Field
+
+from aegis_os.agents.base_agent import BaseAgent, parse_agent_response
+from aegis_os.kernel.providers import (
+    LLMCallResult,
+    LLMStreamEvent,
+    LLMUsage,
+    ProviderCapabilities,
+    ProviderRouter,
+)
+from aegis_os.kernel.state import AgentRole, AgentState, MissionStatus, StepStatus
 from aegis_os.kernel.state_machine import StateMachine
-from aegis_os.tools.base import BaseAegisTool,ToolResult
+from aegis_os.tools.base import BaseAegisTool, ToolResult
+
 
 class MockChatModel(BaseChatModel):
     """Deterministic mock LLM that yields responses from a predefined list."""
@@ -21,9 +32,9 @@ class MockChatModel(BaseChatModel):
 
     def _generate(
         self,
-        messages: List[BaseMessage],
-        stop: Optional[List[str]] = None,
-        run_manager: Optional[CallbackManagerForLLMRun] = None,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: CallbackManagerForLLMRun | None = None,
         **kwargs: Any,
     ) -> ChatResult:
         if self.call_count < len(self.responses):
@@ -45,6 +56,44 @@ class _AddTool(BaseAegisTool):
 
     def _execute(self,args: _CalcArgs) -> ToolResult:
         return ToolResult.ok(output=str(args.a+args.b),metadata={"sum":args.a+args.b})
+
+
+class _ParallelTool(BaseAegisTool):
+    parallel_safe=True
+    description="Test-only independent calculation tool."
+    args_schema=_CalcArgs
+
+    def __init__(self,name: str,barrier: Barrier) -> None:
+        self.name=name
+        self.barrier=barrier
+
+    def _execute(self,args: _CalcArgs) -> ToolResult:
+        self.barrier.wait(timeout=2)
+        return ToolResult.ok(str(args.a+args.b))
+
+
+class _NativeToolProvider:
+    provider_name="test-provider"
+    model_name="test-model"
+    capabilities=ProviderCapabilities()
+
+    def __init__(self) -> None:
+        self.received_tools: Sequence[dict[str,Any]] | None=None
+        self.calls=0
+
+    def complete(self,messages: Sequence[BaseMessage],tools: Sequence[dict[str,Any]] | None = None) -> LLMCallResult:
+        self.calls+=1
+        self.received_tools=tools
+        return LLMCallResult(
+            message=AIMessage(content="",tool_calls=[{"name":"add","args":{"a":2,"b":3},"id":"call-1","type":"tool_call"}]),
+            usage=LLMUsage(input_tokens=10,output_tokens=3,total_tokens=13,latency_ms=1.0,cost_usd=0.001,provider=self.provider_name,model=self.model_name),
+        )
+
+    def stream(self,messages: Sequence[BaseMessage],tools: Sequence[dict[str,Any]] | None = None):
+        yield LLMStreamEvent(kind="text",text="")
+
+    def count_tokens(self,messages: Sequence[BaseMessage]) -> int:
+        return 10
 
 class TestParseAgentResponse:
     """Tests for extracting AgentIntent from varied LLM outputs."""
@@ -90,6 +139,18 @@ class TestParseAgentResponse:
         assert intent.final_answer==raw
         assert intent.is_finished is True
 
+    def test_empty_response_is_not_mistaken_for_task_completion(self) -> None:
+        intent=parse_agent_response("  \n")
+
+        assert intent.is_finished is False
+        assert intent.parse_error is not None
+
+    def test_empty_json_object_is_not_mistaken_for_task_completion(self) -> None:
+        intent=parse_agent_response("{}")
+
+        assert intent.is_finished is False
+        assert intent.parse_error is not None
+
     def test_parse_malformed_json_returns_error_intent(self) -> None:
         raw='```json\n{"thought": "Incomplete json", "action": "read_file",\n```'
         intent=parse_agent_response(raw)
@@ -123,6 +184,65 @@ class TestBaseAgentExecution:
         assert step_record.tool_result is not None
         assert step_record.tool_result.output=="30"
         assert sm.state.current_step_index==1
+
+    def test_native_tool_call_uses_json_schema_and_dispatches_without_text_parsing(self) -> None:
+        provider=_NativeToolProvider()
+        router=ProviderRouter([provider])
+        state=AgentState(mission_goal="Compute sum",status=MissionStatus.RUNNING)
+        agent=BaseAgent(
+            name="AegisDev",
+            role=AgentRole.DEV,
+            system_prompt="You are a developer.",
+            llm=router,
+            state_machine=StateMachine(state=state),
+            tools=[_AddTool()],
+        )
+
+        step_record=agent.step("Calculate 2 + 3")
+
+        assert provider.received_tools is not None
+        assert provider.received_tools[0]["function"]["name"]=="add"
+        assert step_record.tool_name=="add"
+        assert step_record.status==StepStatus.SUCCESS
+        assert step_record.tool_result is not None
+        assert "add: 5" in step_record.tool_result.output
+
+    def test_independent_parallel_tool_calls_run_concurrently(self) -> None:
+        barrier=Barrier(2)
+        agent=BaseAgent(
+            name="AegisDev",
+            role=AgentRole.DEV,
+            system_prompt="You are a developer.",
+            llm=MockChatModel(),
+            tools=[_ParallelTool("first",barrier),_ParallelTool("second",barrier)],
+        )
+
+        output,args,succeeded=agent._execute_calls([
+            {"name":"first","args":{"a":1,"b":2}},
+            {"name":"second","args":{"a":4,"b":5}},
+        ])
+
+        assert succeeded
+        assert "first: 3" in output
+        assert "second: 9" in output
+        assert set(args)=={"first","second"}
+
+    def test_token_budget_stops_before_call_and_records_partial_result(self) -> None:
+        llm=MockChatModel(responses=['{"final_answer":"Should not run"}'])
+        state=AgentState(mission_goal="Test",status=MissionStatus.RUNNING,max_tokens=20)
+        agent=BaseAgent(
+            name="AegisDev",
+            role=AgentRole.DEV,
+            system_prompt="You are a developer.",
+            llm=llm,
+            state_machine=StateMachine(state=state),
+        )
+
+        record=agent.step("This prompt is too large for the token budget")
+
+        assert llm.call_count==0
+        assert record.status==StepStatus.BLOCKED
+        assert "Token budget exhausted" in state.context_variables["partial_result_reason"]
 
     def test_single_react_step_final_answer(self) -> None:
         llm=MockChatModel(

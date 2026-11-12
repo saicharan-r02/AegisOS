@@ -1,0 +1,5 @@
+{
+  "id": "easy-06",
+  "category": "refactor",
+  "goal": "Refactor `pricing.py` to extract magic numbers 0.08 and 0.15 into module constants `DEFAULT_TAX_RATE = 0.08` and `DEFAULT_DISCOUNT_RATE = 0.15`. `calculate_total` should use these constants."
+}

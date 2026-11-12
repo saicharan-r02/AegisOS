@@ -1,0 +1,5 @@
+{
+  "id": "js-01",
+  "category": "multilingual",
+  "goal": "Implement `sumArray(numbers)` in `math.js` summing all numbers in an array."
+}

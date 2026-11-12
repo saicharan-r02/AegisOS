@@ -1,0 +1,5 @@
+{
+  "id": "easy-13",
+  "category": "feature",
+  "goal": "Write `flatten(nested: list) -> list` in `lists.py` to flatten an arbitrarily nested list of integers."
+}

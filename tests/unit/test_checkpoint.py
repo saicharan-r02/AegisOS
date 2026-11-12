@@ -1,9 +1,10 @@
 from pathlib import Path
+
 import pytest
-import sqlite3
+
 from aegis_os.kernel.checkpoint import CheckpointStore
 from aegis_os.kernel.exceptions import CheckpointNotFoundError
-from aegis_os.kernel.state import AgentRole, AgentState, MissionStatus
+from aegis_os.kernel.state import AgentRole, AgentState
 from aegis_os.tools.base import ToolResult
 
 

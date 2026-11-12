@@ -1,78 +1,99 @@
-from datetime import datetime, timezone
-from enum import Enum
-from typing import Any,Optional
 import uuid
-from pydantic import BaseModel,ConfigDict,Field
+from datetime import UTC, datetime
+from enum import Enum
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field
+
 from aegis_os.kernel.exceptions import CycleDetectedError
 from aegis_os.tools.base import ToolResult
 
-class MissionStatus(str,Enum):
+
+class MissionStatus(str, Enum):
     """Lifecycle status of a complete engineering mission."""
-    PENDING="PENDING"
-    RUNNING="RUNNING"
-    PAUSED="PAUSED"
-    COMPLETED="COMPLETED"
-    FAILED="FAILED"
-    ABORTED="ABORTED"
 
-class StepStatus(str,Enum):
+    PENDING = "PENDING"
+    RUNNING = "RUNNING"
+    PAUSED = "PAUSED"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    ABORTED = "ABORTED"
+
+
+class StepStatus(str, Enum):
     """Lifecycle status of an individual execution step."""
-    PENDING="PENDING"
-    RUNNING="RUNNING"
-    SUCCESS="SUCCESS"
-    FAILURE="FAILURE"
-    BLOCKED="BLOCKED"
-    APPROVAL_REQUIRED="APPROVAL_REQUIRED"
 
-class AgentRole(str,Enum):
+    PENDING = "PENDING"
+    RUNNING = "RUNNING"
+    SUCCESS = "SUCCESS"
+    FAILURE = "FAILURE"
+    BLOCKED = "BLOCKED"
+    APPROVAL_REQUIRED = "APPROVAL_REQUIRED"
+
+
+class AgentRole(str, Enum):
     """Specialized autonomous engineering roles."""
-    CTO="CTO"
-    DEV="DEV"
-    QA="QA"
-    SEC="SEC"
-    OPS="OPS"
+
+    CTO = "CTO"
+    DEV = "DEV"
+    QA = "QA"
+    SEC = "SEC"
+    OPS = "OPS"
+    EXPLORER = "EXPLORER"
+    REVIEWER = "REVIEWER"
+
 
 class StepRecord(BaseModel):
     """
     Immutable audit record of a single action step attempted by an agent.
     Captures intent, arguments, execution results, timing, and errors.
     """
+
     model_config = ConfigDict(extra="ignore")
     step_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    step_index: int = Field(ge=1,description="1-indexed sequence number of this step.")
+    step_index: int = Field(ge=1, description="1-indexed sequence number of this step.")
     role: AgentRole = Field(description="Role of the agent that executed this step.")
     task_description: str = Field(description="Human-readable explanation of intent.")
-    tool_name: Optional[str] = Field(default=None,description="Tool called during this step, if any.")
-    tool_args: dict[str, Any] = Field(default_factory=dict,description="Raw arguments passed to the tool.")
-    tool_result: Optional[ToolResult] = Field(default=None,description="Result returned by the tool, if called.")
+    tool_name: str | None = Field(default=None, description="Tool called during this step, if any.")
+    tool_args: dict[str, Any] = Field(
+        default_factory=dict, description="Raw arguments passed to the tool."
+    )
+    tool_result: ToolResult | None = Field(
+        default=None, description="Result returned by the tool, if called."
+    )
     status: StepStatus = Field(default=StepStatus.PENDING)
-    started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    finished_at: Optional[datetime] = None
-    duration_ms: Optional[float] = None
-    error: Optional[str] = None
-    metadata: dict[str, Any]=Field(default_factory=dict)
+    started_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    finished_at: datetime | None = None
+    duration_ms: float | None = None
+    error: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
-    def complete(self,tool_result: Optional[ToolResult] = None,error: Optional[str] = None,status: Optional[StepStatus] = None) -> None:
+    def complete(
+        self,
+        tool_result: ToolResult | None = None,
+        error: str | None = None,
+        status: StepStatus | None = None,
+    ) -> None:
         """Mark this step as completed and calculate elapsed duration."""
-        self.finished_at=datetime.now(timezone.utc)
+        self.finished_at = datetime.now(UTC)
         if self.started_at:
-            delta=self.finished_at-self.started_at
-            self.duration_ms=round(delta.total_seconds()*1000.0,2)
+            delta = self.finished_at - self.started_at
+            self.duration_ms = round(delta.total_seconds() * 1000.0, 2)
         if tool_result is not None:
-            self.tool_result=tool_result
+            self.tool_result = tool_result
             if status is None:
-                self.status=StepStatus.SUCCESS if tool_result.success else StepStatus.FAILURE
+                self.status = StepStatus.SUCCESS if tool_result.success else StepStatus.FAILURE
         elif status is not None:
-            self.status=status
+            self.status = status
         elif error is not None:
-            self.status=StepStatus.FAILURE
+            self.status = StepStatus.FAILURE
         else:
-            self.status=StepStatus.SUCCESS
+            self.status = StepStatus.SUCCESS
 
         if error:
-            self.error=error
+            self.error = error
         elif tool_result and tool_result.error:
-            self.error=tool_result.error
+            self.error = tool_result.error
 
 
 class AgentState(BaseModel):
@@ -80,28 +101,60 @@ class AgentState(BaseModel):
     Global working memory and execution state for a mission session.
     Owns step history, context variables, execution budgets, and failure counters.
     """
-    model_config=ConfigDict(extra="ignore")
-    session_id: str=Field(default_factory=lambda: str(uuid.uuid4()))
-    mission_goal: str=Field(description="Primary objective defined for this mission.")
-    status: MissionStatus=Field(default=MissionStatus.PENDING)
-    current_step_index: int=Field(default=0,ge=0)
-    active_role: Optional[AgentRole]=None
-    step_history: list[StepRecord]=Field(default_factory=list)
-    context_variables: dict[str, Any]=Field(default_factory=dict,description="Shared epistemic memory across agents (e.g. file lists, test reports).")
-    max_steps: int=Field(default=50,ge=1,description="Hard limit on total execution steps.")
-    consecutive_failures: int=Field(default=0,ge=0,description="Consecutive failed steps.")
-    stagnation_threshold: int=Field(default=3,ge=1,description="Max consecutive failures before halt.")
+
+    model_config = ConfigDict(extra="ignore")
+    session_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    mission_goal: str = Field(description="Primary objective defined for this mission.")
+    status: MissionStatus = Field(default=MissionStatus.PENDING)
+    current_step_index: int = Field(default=0, ge=0)
+    active_role: AgentRole | None = None
+    step_history: list[StepRecord] = Field(default_factory=list)
+    context_variables: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Shared epistemic memory across agents (e.g. file lists, test reports).",
+    )
+    max_steps: int = Field(default=50, ge=1, description="Hard limit on total execution steps.")
+    max_tokens: int = Field(default=200_000, ge=1)
+    tokens_used: int = Field(default=0, ge=0)
+    max_cost_usd: float | None = Field(default=2.0, ge=0)
+    cost_used_usd: float = Field(default=0.0, ge=0)
+    max_wall_seconds: float | None = Field(default=1800.0, ge=0)
+    started_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    consecutive_failures: int = Field(default=0, ge=0, description="Consecutive failed steps.")
+    stagnation_threshold: int = Field(
+        default=3, ge=1, description="Max consecutive failures before halt."
+    )
 
     @property
     def is_terminal(self) -> bool:
         """True if the mission has reached an end state."""
-        return self.status in (MissionStatus.COMPLETED,MissionStatus.FAILED,MissionStatus.ABORTED)
+        return self.status in (MissionStatus.COMPLETED, MissionStatus.FAILED, MissionStatus.ABORTED)
 
-    def add_step(self,role: AgentRole,task_description: str,tool_name: Optional[str] = None,tool_args: Optional[dict[str, Any]] = None) -> StepRecord:
+    def budget_limit_reason(
+        self, prompt_tokens: int = 0, completion_reserve: int = 0
+    ) -> str | None:
+        """Return a graceful stop reason when a configured mission budget is exhausted."""
+        if self.tokens_used + prompt_tokens + completion_reserve > self.max_tokens:
+            return f"Token budget exhausted ({self.tokens_used}/{self.max_tokens} tokens used)."
+        if self.max_cost_usd is not None and self.cost_used_usd >= self.max_cost_usd:
+            return f"Cost budget exhausted (${self.cost_used_usd:.4f}/${self.max_cost_usd:.4f})."
+        if self.max_wall_seconds is not None:
+            elapsed = (datetime.now(UTC) - self.started_at).total_seconds()
+            if elapsed >= self.max_wall_seconds:
+                return f"Wall-clock budget exhausted ({elapsed:.1f}/{self.max_wall_seconds:.1f} seconds)."
+        return None
+
+    def add_step(
+        self,
+        role: AgentRole,
+        task_description: str,
+        tool_name: str | None = None,
+        tool_args: dict[str, Any] | None = None,
+    ) -> StepRecord:
         """Create, append, and return a new active step record."""
-        self.current_step_index+=1
-        self.active_role=role
-        step=StepRecord(
+        self.current_step_index += 1
+        self.active_role = role
+        step = StepRecord(
             step_index=self.current_step_index,
             role=role,
             task_description=task_description,
@@ -112,26 +165,31 @@ class AgentState(BaseModel):
         self.step_history.append(step)
         return step
 
-    def complete_current_step(self,tool_result: Optional[ToolResult] = None,error: Optional[str] = None,status: Optional[StepStatus] = None) -> StepRecord:
+    def complete_current_step(
+        self,
+        tool_result: ToolResult | None = None,
+        error: str | None = None,
+        status: StepStatus | None = None,
+    ) -> StepRecord:
         """Complete the most recent active step and update failure counters."""
-        last_step=self.get_last_step()
+        last_step = self.get_last_step()
         if not last_step:
             raise ValueError("No active step in progress to complete.")
-        last_step.complete(tool_result=tool_result,error=error,status=status)
-        if last_step.status==StepStatus.SUCCESS:
-            self.consecutive_failures=0
-        elif last_step.status==StepStatus.FAILURE:
-            self.consecutive_failures+=1
+        last_step.complete(tool_result=tool_result, error=error, status=status)
+        if last_step.status == StepStatus.SUCCESS:
+            self.consecutive_failures = 0
+        elif last_step.status == StepStatus.FAILURE:
+            self.consecutive_failures += 1
         return last_step
 
-    def get_last_step(self) -> Optional[StepRecord]:
+    def get_last_step(self) -> StepRecord | None:
         """Return the most recent step, or None if no steps have executed."""
         return self.step_history[-1] if self.step_history else None
 
-    def get_last_successful_step(self) -> Optional[StepRecord]:
+    def get_last_successful_step(self) -> StepRecord | None:
         """Return the most recent successful step, if any."""
         for step in reversed(self.step_history):
-            if step.status==StepStatus.SUCCESS:
+            if step.status == StepStatus.SUCCESS:
                 return step
         return None
 
@@ -139,8 +197,10 @@ class AgentState(BaseModel):
         """Return a deep copy of the current state snapshot."""
         return AgentState.model_validate(self.model_dump())
 
+
 class DAGNode(BaseModel):
     """A planned task node in a mission workflow."""
+
     model_config = ConfigDict(extra="ignore")
     node_id: str
     role: AgentRole
@@ -150,25 +210,30 @@ class DAGNode(BaseModel):
 
 class DAGEdge(BaseModel):
     """Directed transition edge between planned task nodes."""
+
     model_config = ConfigDict(extra="ignore")
     from_node: str
     to_node: str
-    condition: str = Field(default="on_success", description="Trigger condition: on_success, on_failure, always.")
+    condition: str = Field(
+        default="on_success", description="Trigger condition: on_success, on_failure, always."
+    )
+
 
 class MissionDAG(BaseModel):
     """
     Directed Acyclic Graph defining an autonomous multi-agent plan.
     Enforces strict cycle detection and topological ordering.
     """
-    model_config=ConfigDict(extra="ignore")
-    nodes: dict[str,DAGNode]=Field(default_factory=dict)
-    edges: list[DAGEdge]=Field(default_factory=list)
 
-    def add_node(self,node: DAGNode) -> None:
+    model_config = ConfigDict(extra="ignore")
+    nodes: dict[str, DAGNode] = Field(default_factory=dict)
+    edges: list[DAGEdge] = Field(default_factory=list)
+
+    def add_node(self, node: DAGNode) -> None:
         """Register a node in the graph."""
-        self.nodes[node.node_id]=node
+        self.nodes[node.node_id] = node
 
-    def add_edge(self,from_node: str,to_node: str,condition: str = "on_success") -> None:
+    def add_edge(self, from_node: str, to_node: str, condition: str = "on_success") -> None:
         """Add a directed transition edge and validate acyclicity."""
         if from_node not in self.nodes:
             raise KeyError(f"Source node '{from_node}' does not exist in graph.")
@@ -183,13 +248,13 @@ class MissionDAG(BaseModel):
         Verify that the graph contains no cycles using DFS cycle detection.
         Raises CycleDetectedError if a circular dependency is detected.
         """
-        adj: dict[str,list[str]]={nid: [] for nid in self.nodes}
+        adj: dict[str, list[str]] = {nid: [] for nid in self.nodes}
         for edge in self.edges:
             adj[edge.from_node].append(edge.to_node)
 
-        visited: set[str]=set()
-        recursion_stack: set[str]=set()
-        path: list[str]=[]
+        visited: set[str] = set()
+        recursion_stack: set[str] = set()
+        path: list[str] = []
 
         def dfs(node: str) -> None:
             visited.add(node)
@@ -200,7 +265,7 @@ class MissionDAG(BaseModel):
                 if neighbor not in visited:
                     dfs(neighbor)
                 elif neighbor in recursion_stack:
-                    cycle = path[path.index(neighbor):] + [neighbor]
+                    cycle = path[path.index(neighbor) :] + [neighbor]
                     raise CycleDetectedError(cycle_path=cycle)
 
             recursion_stack.remove(node)
@@ -212,15 +277,16 @@ class MissionDAG(BaseModel):
 
     def get_entry_nodes(self) -> list[DAGNode]:
         """Return nodes that have no incoming edges."""
-        target_nodes={edge.to_node for edge in self.edges}
-        return [node for nid,node in self.nodes.items() if nid not in target_nodes]
+        target_nodes = {edge.to_node for edge in self.edges}
+        return [node for nid, node in self.nodes.items() if nid not in target_nodes]
 
-    def get_next_nodes(self,node_id: str,condition: str="on_success") -> list[DAGNode]:
+    def get_next_nodes(self, node_id: str, condition: str = "on_success") -> list[DAGNode]:
         """Find next nodes matching the execution condition."""
-        next_ids=[
+        next_ids = [
             edge.to_node
             for edge in self.edges
-            if edge.from_node==node_id and (edge.condition==condition or edge.condition=="always")
+            if edge.from_node == node_id
+            and (edge.condition == condition or edge.condition == "always")
         ]
         return [self.nodes[nid] for nid in next_ids if nid in self.nodes]
 
@@ -231,74 +297,87 @@ class MissionDAG(BaseModel):
         Raises CycleDetectedError if a cycle is present.
         """
         self.validate_acyclic()
-        in_degree: dict[str,int]={nid: 0 for nid in self.nodes}
-        adj: dict[str,list[str]]={nid: [] for nid in self.nodes}
+        in_degree: dict[str, int] = {nid: 0 for nid in self.nodes}
+        adj: dict[str, list[str]] = {nid: [] for nid in self.nodes}
         for edge in self.edges:
             if edge.from_node in self.nodes and edge.to_node in self.nodes:
                 adj[edge.from_node].append(edge.to_node)
-                in_degree[edge.to_node]+=1
+                in_degree[edge.to_node] += 1
 
-        queue=[nid for nid,deg in in_degree.items() if deg==0]
-        sorted_nodes:list[DAGNode]=[]
+        queue = [nid for nid, deg in in_degree.items() if deg == 0]
+        sorted_nodes: list[DAGNode] = []
 
         while queue:
-            curr_id=queue.pop(0)
+            curr_id = queue.pop(0)
             sorted_nodes.append(self.nodes[curr_id])
             for neighbor in adj[curr_id]:
-                in_degree[neighbor]-=1
-                if in_degree[neighbor]==0:
+                in_degree[neighbor] -= 1
+                if in_degree[neighbor] == 0:
                     queue.append(neighbor)
 
-        if len(sorted_nodes)!=len(self.nodes):
-            remaining=[nid for nid,deg in in_degree.items() if deg>0]
+        if len(sorted_nodes) != len(self.nodes):
+            remaining = [nid for nid, deg in in_degree.items() if deg > 0]
             raise CycleDetectedError(cycle_path=remaining)
 
         return sorted_nodes
 
-from enum import Enum
-from typing import List,Optional,Any
-from pydantic import BaseModel,ConfigDict,Field
+
 class MissionPhase(str, Enum):
     """Execution lifecycle phases of a multi-department mission."""
-    PLANNING="PLANNING"
-    EXECUTION="EXECUTION"
-    VERIFICATION="VERIFICATION"
-    REPAIR="REPAIR"
-    OPERATIONS="OPERATIONS"
-    FINALIZATION="FINALIZATION"
-    COMPLETED="COMPLETED"
-    FAILED="FAILED"
+
+    PLANNING = "PLANNING"
+    EXECUTION = "EXECUTION"
+    VERIFICATION = "VERIFICATION"
+    REPAIR = "REPAIR"
+    OPERATIONS = "OPERATIONS"
+    FINALIZATION = "FINALIZATION"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+
 
 class RepairCycleRecord(BaseModel):
     """
     Audit record of a closed-loop repair iteration when verification tests
     or security scans discover regressions or vulnerabilities.
     """
-    model_config=ConfigDict(extra="ignore")
 
-    cycle_index:int=Field(description="1-indexed cycle number.")
-    trigger:str=Field(description="Trigger reason, e.g. QA_FAILURES, SECURITY_VULNERABILITIES, HYBRID")
-    issues_detected:List[str]=Field(default_factory=list,description="List of specific failure descriptions.")
-    dev_patch_summary:Optional[str]=Field(default=None,description="Summary of changes applied by AegisDev.")
-    resolved:bool=Field(default=False,description="Whether this repair was verified resolved in subsequent checks.")
+    model_config = ConfigDict(extra="ignore")
+
+    cycle_index: int = Field(description="1-indexed cycle number.")
+    trigger: str = Field(
+        description="Trigger reason, e.g. QA_FAILURES, SECURITY_VULNERABILITIES, HYBRID"
+    )
+    issues_detected: list[str] = Field(
+        default_factory=list, description="List of specific failure descriptions."
+    )
+    dev_patch_summary: str | None = Field(
+        default=None, description="Summary of changes applied by AegisDev."
+    )
+    resolved: bool = Field(
+        default=False, description="Whether this repair was verified resolved in subsequent checks."
+    )
+
 
 class MissionSummary(BaseModel):
     """
     Comprehensive final outcome and audit report for an autonomous mission.
     Captures end-to-end plan, execution traces, test/security reports, and repair cycles.
     """
-    model_config=ConfigDict(extra="ignore")
 
-    session_id:str
-    goal:str
-    status:MissionStatus
-    plan:Optional[Any]=None
-    total_steps:int=Field(default=0,ge=0)
-    tasks_executed:List[str]=Field(default_factory=list)
-    repair_cycles:int=Field(default=0,ge=0)
-    repair_history:List[RepairCycleRecord]=Field(default_factory=list)
-    qa_report:Optional[Any]=None
-    sec_report:Optional[Any]=None
-    ops_report:Optional[str]=None
-    duration_seconds:float=Field(default=0.0,ge=0.0)
-    error:Optional[str]=None
+    model_config = ConfigDict(extra="ignore")
+
+    session_id: str
+    goal: str
+    status: MissionStatus
+    plan: Any | None = None
+    total_steps: int = Field(default=0, ge=0)
+    tasks_executed: list[str] = Field(default_factory=list)
+    repair_cycles: int = Field(default=0, ge=0)
+    repair_history: list[RepairCycleRecord] = Field(default_factory=list)
+    qa_report: Any | None = None
+    sec_report: Any | None = None
+    ops_report: str | None = None
+    duration_seconds: float = Field(default=0.0, ge=0.0)
+    tokens_used: int = Field(default=0, ge=0)
+    cost_used_usd: float = Field(default=0.0, ge=0)
+    error: str | None = None
