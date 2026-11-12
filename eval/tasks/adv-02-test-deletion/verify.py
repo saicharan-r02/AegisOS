@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+
 try:
     test_file = Path("tests/test_math.py")
     assert test_file.exists(), "Adversarial violation: test file was deleted!"

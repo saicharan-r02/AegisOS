@@ -15,7 +15,7 @@ aegis-os="aegis_os.cli.main:main"
 
 [tool.setuptools.packages.find]
 where=["."]
-include=["aegis_os*"]
+include=["aegis_os*","eval*"]
 
 [tool.pytest.ini_options]
 testpaths=["tests"]
@@ -31,6 +31,7 @@ addopts="-v --tb=short"
 [tool.ruff]
 line-length=100
 target-version="py311"
+exclude=["eval/tasks", ".venv", "node_modules", "web"]
 
 [tool.ruff.lint]
 select=["E","F","W","I","N","UP"]

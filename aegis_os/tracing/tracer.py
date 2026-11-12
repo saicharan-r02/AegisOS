@@ -5,10 +5,11 @@ from __future__ import annotations
 import json
 import sqlite3
 import uuid
+from collections.abc import Generator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Generator
+from typing import Any
 
 from aegis_os.security.redactor import SecretRedactor
 from aegis_os.tracing.models import MissionTrace, SpanRecord, SpanStatus, SpanType
@@ -70,10 +71,13 @@ class MissionTracer:
                 );
             """)
             now_iso = datetime.now(UTC).isoformat()
-            self._conn.execute("""
+            self._conn.execute(
+                """
                 INSERT OR IGNORE INTO traces (mission_id, objective, started_at, status)
                 VALUES (?, ?, ?, 'RUNNING');
-            """, (self.mission_id, self.objective, now_iso))
+            """,
+                (self.mission_id, self.objective, now_iso),
+            )
 
     def _redact_dict(self, data: dict[str, Any]) -> dict[str, Any]:
         """Recursively redact secrets in dict keys and values."""
@@ -85,8 +89,7 @@ class MissionTracer:
                 redacted[k] = self._redact_dict(v)
             elif isinstance(v, list):
                 redacted[k] = [
-                    self.redactor.redact(item) if isinstance(item, str) else item
-                    for item in v
+                    self.redactor.redact(item) if isinstance(item, str) else item for item in v
                 ]
             else:
                 redacted[k] = v
@@ -130,30 +133,33 @@ class MissionTracer:
         """Save finished span to SQLite."""
         safe_output = self._redact_dict(span.output_data)
         with self._conn:
-            self._conn.execute("""
+            self._conn.execute(
+                """
                 INSERT OR REPLACE INTO spans (
                     span_id, parent_span_id, mission_id, span_type, name, role,
                     started_at, ended_at, duration_ms, status, input_data, output_data,
                     tokens_in, tokens_out, cost_usd, error
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-            """, (
-                span.span_id,
-                span.parent_span_id,
-                span.mission_id,
-                span.span_type.value,
-                span.name,
-                span.role,
-                span.started_at.isoformat(),
-                span.ended_at.isoformat() if span.ended_at else None,
-                span.duration_ms,
-                span.status.value,
-                json.dumps(span.input_data),
-                json.dumps(safe_output),
-                span.tokens_in,
-                span.tokens_out,
-                span.cost_usd,
-                span.error,
-            ))
+            """,
+                (
+                    span.span_id,
+                    span.parent_span_id,
+                    span.mission_id,
+                    span.span_type.value,
+                    span.name,
+                    span.role,
+                    span.started_at.isoformat(),
+                    span.ended_at.isoformat() if span.ended_at else None,
+                    span.duration_ms,
+                    span.status.value,
+                    json.dumps(span.input_data),
+                    json.dumps(safe_output),
+                    span.tokens_in,
+                    span.tokens_out,
+                    span.cost_usd,
+                    span.error,
+                ),
+            )
 
     def finish_mission(self, status: str = "COMPLETED") -> MissionTrace:
         """Conclude the mission trace and update aggregate statistics."""
@@ -164,25 +170,26 @@ class MissionTracer:
         trace.aggregate_metrics()
 
         with self._conn:
-            self._conn.execute("""
+            self._conn.execute(
+                """
                 UPDATE traces
                 SET ended_at = ?, duration_ms = ?, total_tokens = ?, total_cost_usd = ?, status = ?
                 WHERE mission_id = ?;
-            """, (
-                ended_at.isoformat(),
-                trace.duration_ms,
-                trace.total_tokens,
-                trace.total_cost_usd,
-                status,
-                self.mission_id,
-            ))
+            """,
+                (
+                    ended_at.isoformat(),
+                    trace.duration_ms,
+                    trace.total_tokens,
+                    trace.total_cost_usd,
+                    status,
+                    self.mission_id,
+                ),
+            )
         return trace
 
     def get_trace(self) -> MissionTrace:
         """Assemble complete trace from database records."""
-        cursor = self._conn.execute(
-            "SELECT * FROM traces WHERE mission_id = ?", (self.mission_id,)
-        )
+        cursor = self._conn.execute("SELECT * FROM traces WHERE mission_id = ?", (self.mission_id,))
         t_row = cursor.fetchone()
         obj = t_row["objective"] if t_row else self.objective
         status = t_row["status"] if t_row else "RUNNING"
@@ -194,24 +201,26 @@ class MissionTracer:
         for r in cursor.fetchall():
             inp = json.loads(r["input_data"] or "{}")
             outp = json.loads(r["output_data"] or "{}")
-            spans.append(SpanRecord(
-                span_id=r["span_id"],
-                parent_span_id=r["parent_span_id"],
-                mission_id=r["mission_id"],
-                span_type=SpanType(r["span_type"]),
-                name=r["name"],
-                role=r["role"],
-                started_at=datetime.fromisoformat(r["started_at"]),
-                ended_at=datetime.fromisoformat(r["ended_at"]) if r["ended_at"] else None,
-                duration_ms=r["duration_ms"] or 0.0,
-                status=SpanStatus(r["status"]),
-                input_data=inp,
-                output_data=outp,
-                tokens_in=r["tokens_in"] or 0,
-                tokens_out=r["tokens_out"] or 0,
-                cost_usd=r["cost_usd"] or 0.0,
-                error=r["error"],
-            ))
+            spans.append(
+                SpanRecord(
+                    span_id=r["span_id"],
+                    parent_span_id=r["parent_span_id"],
+                    mission_id=r["mission_id"],
+                    span_type=SpanType(r["span_type"]),
+                    name=r["name"],
+                    role=r["role"],
+                    started_at=datetime.fromisoformat(r["started_at"]),
+                    ended_at=datetime.fromisoformat(r["ended_at"]) if r["ended_at"] else None,
+                    duration_ms=r["duration_ms"] or 0.0,
+                    status=SpanStatus(r["status"]),
+                    input_data=inp,
+                    output_data=outp,
+                    tokens_in=r["tokens_in"] or 0,
+                    tokens_out=r["tokens_out"] or 0,
+                    cost_usd=r["cost_usd"] or 0.0,
+                    error=r["error"],
+                )
+            )
 
         trace = MissionTrace(
             mission_id=self.mission_id,
@@ -228,7 +237,10 @@ class MissionTracer:
         out.parent.mkdir(parents=True, exist_ok=True)
         trace = self.get_trace()
         with open(out, "w", encoding="utf-8") as f:
-            f.write(json.dumps({"type": "trace_header", "mission": trace.model_dump(mode="json")}) + "\n")
+            f.write(
+                json.dumps({"type": "trace_header", "mission": trace.model_dump(mode="json")})
+                + "\n"
+            )
             for sp in trace.spans:
                 f.write(json.dumps({"type": "span", "data": sp.model_dump(mode="json")}) + "\n")
         return out

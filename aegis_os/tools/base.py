@@ -10,27 +10,28 @@ class ToolResult(BaseModel):
     Both success and failure states are represented here — never via exceptions.
     The agent loop inspects `success` to decide its next action.
     """
-    success: bool =Field(description="True if the tool completed its intended action.")
-    output: str =Field(
+
+    success: bool = Field(description="True if the tool completed its intended action.")
+    output: str = Field(
         default="",
         description="Human-readable output for the agent to reason about.",
     )
-    error: str | None=Field(
+    error: str | None = Field(
         default=None,
         description="Structured error message if success=False. None if success=True.",
     )
-    metadata: dict[str,Any]=Field(
+    metadata: dict[str, Any] = Field(
         default_factory=dict,
         description="Additional structured data (line counts, file sizes, exit codes, etc.).",
     )
 
     @classmethod
-    def ok(cls,output: str,metadata: dict[str, Any] | None = None) -> "ToolResult":
+    def ok(cls, output: str, metadata: dict[str, Any] | None = None) -> "ToolResult":
         """Convenience constructor for successful results."""
         return cls(success=True, output=output, metadata=metadata or {})
 
     @classmethod
-    def fail(cls,error: str,metadata: dict[str, Any] | None = None) -> "ToolResult":
+    def fail(cls, error: str, metadata: dict[str, Any] | None = None) -> "ToolResult":
         """Convenience constructor for failure results."""
         return cls(success=False, output="", error=error, metadata=metadata or {})
 
@@ -47,12 +48,13 @@ class BaseAegisTool(ABC):
         - Raise exceptions from `_execute()`.
         - Call `_execute()` directly — always go through `run()`.
     """
+
     name: str
     description: str
     args_schema: type[BaseModel]
     parallel_safe: bool = False
 
-    def run(self,raw_args: dict[str,Any]) -> ToolResult:
+    def run(self, raw_args: dict[str, Any]) -> ToolResult:
         """
         Safe entry point: validate inputs, execute, and catch all errors.
         This method is the gatekeeper. The calling agent loop should call
@@ -64,10 +66,10 @@ class BaseAegisTool(ABC):
         """
         # Step 1: Runtime input validation via Pydantic
         try:
-            validated_args=self.args_schema.model_validate(raw_args)
+            validated_args = self.args_schema.model_validate(raw_args)
         except ValidationError as exc:
             # Format Pydantic validation errors into actionable agent feedback
-            error_details ="; ".join(
+            error_details = "; ".join(
                 f"Field '{'.'.join(str(location) for location in e['loc'])}': {e['msg']}"
                 for e in exc.errors()
             )

@@ -8,13 +8,14 @@ from pathlib import Path
 from aegis_os.sandbox.base import CommandResult, SandboxExecutor
 from aegis_os.sandbox.quotas import ExecutionQuota
 
-_DEFAULT_QUOTA=ExecutionQuota()
-_IS_WINDOWS=platform.system()=="Windows"
+_DEFAULT_QUOTA = ExecutionQuota()
+_IS_WINDOWS = platform.system() == "Windows"
 
-_TRUNCATION_NOTICE=(
+_TRUNCATION_NOTICE = (
     "\n\n[AEGIS WARNING] Output exceeded maximum byte limit and was truncated. "
     "Re-run with a narrower scope or increase max_output_bytes quota."
 )
+
 
 def _kill_process_tree(pid: int) -> None:
     """
@@ -24,29 +25,32 @@ def _kill_process_tree(pid: int) -> None:
     """
     try:
         if _IS_WINDOWS:
-            subprocess.run(["taskkill","/F","/T","/PID",str(pid)],capture_output=True,check=False)
+            subprocess.run(
+                ["taskkill", "/F", "/T", "/PID", str(pid)], capture_output=True, check=False
+            )
         else:
-            getpgid=getattr(os,"getpgid",None)
-            killpg=getattr(os,"killpg",None)
-            sigkill=getattr(signal,"SIGKILL",signal.SIGTERM)
+            getpgid = getattr(os, "getpgid", None)
+            killpg = getattr(os, "killpg", None)
+            sigkill = getattr(signal, "SIGKILL", signal.SIGTERM)
             if callable(getpgid) and callable(killpg):
-                killpg(getpgid(pid),sigkill)
+                killpg(getpgid(pid), sigkill)
             else:
-                os.kill(pid,sigkill)
-    except(ProcessLookupError,OSError):
+                os.kill(pid, sigkill)
+    except (ProcessLookupError, OSError):
         pass
 
 
-def _truncate_output(data: bytes,max_bytes: int) -> tuple[str, bool]:
+def _truncate_output(data: bytes, max_bytes: int) -> tuple[str, bool]:
     """
     Decode bytes and truncate to max_bytes if needed.
     Returns:
         (decoded_string,was_truncated)
     """
-    if len(data)>max_bytes:
-        truncated=data[:max_bytes].decode("utf-8",errors="replace")
-        return truncated+_TRUNCATION_NOTICE,True
-    return data.decode("utf-8",errors="replace"),False
+    if len(data) > max_bytes:
+        truncated = data[:max_bytes].decode("utf-8", errors="replace")
+        return truncated + _TRUNCATION_NOTICE, True
+    return data.decode("utf-8", errors="replace"), False
+
 
 class SubprocessSandbox(SandboxExecutor):
     """
@@ -56,7 +60,12 @@ class SubprocessSandbox(SandboxExecutor):
     and structured result encoding (never raises on subprocess failure).
     """
 
-    def execute_command(self,command:str,cwd:Path | None=None,quota:ExecutionQuota | None=None,) -> CommandResult:
+    def execute_command(
+        self,
+        command: str,
+        cwd: Path | None = None,
+        quota: ExecutionQuota | None = None,
+    ) -> CommandResult:
         """
         Execute a shell command with full resource quota enforcement.
         Args:
@@ -67,34 +76,38 @@ class SubprocessSandbox(SandboxExecutor):
         Returns:
             CommandResult — always returns, never raises from subprocess errors.
         """
-        active_quota=quota or _DEFAULT_QUOTA
-        cwd_path=str(cwd)if cwd else None
+        active_quota = quota or _DEFAULT_QUOTA
+        cwd_path = str(cwd) if cwd else None
 
-        kwargs:dict= {
-            "stdout":subprocess.PIPE,
-            "stderr":subprocess.PIPE,
-            "cwd":cwd_path,
-            "shell":_IS_WINDOWS
+        kwargs: dict = {
+            "stdout": subprocess.PIPE,
+            "stderr": subprocess.PIPE,
+            "cwd": cwd_path,
+            "shell": _IS_WINDOWS,
         }
         if _IS_WINDOWS:
-            kwargs["creationflags"]=subprocess.CREATE_NEW_PROCESS_GROUP
+            kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
         else:
             kwargs["start_new_session"] = True
 
-        cmd=command if _IS_WINDOWS else shlex.split(command) if isinstance(command,str) else command
+        cmd = (
+            command
+            if _IS_WINDOWS
+            else shlex.split(command)
+            if isinstance(command, str)
+            else command
+        )
 
-        timed_out=False
+        timed_out = False
         try:
-            process=subprocess.Popen(cmd,**kwargs)
+            process = subprocess.Popen(cmd, **kwargs)
             try:
-                raw_stdout,raw_stderr=process.communicate(
-                    timeout=active_quota.timeout_seconds
-                )
+                raw_stdout, raw_stderr = process.communicate(timeout=active_quota.timeout_seconds)
             except subprocess.TimeoutExpired:
                 _kill_process_tree(process.pid)
                 # Drain pipes after kill to avoid resource leaks
-                raw_stdout,raw_stderr=process.communicate()
-                timed_out=True
+                raw_stdout, raw_stderr = process.communicate()
+                timed_out = True
 
         except FileNotFoundError:
             return CommandResult(
@@ -113,12 +126,12 @@ class SubprocessSandbox(SandboxExecutor):
                 output_truncated=False,
             )
 
-        half_limit=active_quota.max_output_bytes//2
-        stdout_str,out_truncated=_truncate_output(raw_stdout,half_limit)
-        stderr_str,err_truncated=_truncate_output(raw_stderr,half_limit)
-        output_truncated=out_truncated or err_truncated
+        half_limit = active_quota.max_output_bytes // 2
+        stdout_str, out_truncated = _truncate_output(raw_stdout, half_limit)
+        stderr_str, err_truncated = _truncate_output(raw_stderr, half_limit)
+        output_truncated = out_truncated or err_truncated
 
-        exit_code=process.returncode if not timed_out else -1
+        exit_code = process.returncode if not timed_out else -1
 
         return CommandResult(
             exit_code=exit_code,

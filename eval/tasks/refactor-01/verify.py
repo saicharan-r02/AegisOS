@@ -1,4 +1,5 @@
 import sys
+
 try:
     from report import ReportConfig, generate_header
     cfg = ReportConfig(title="Security Audit", author="AegisSec", version=2)

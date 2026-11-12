@@ -154,7 +154,7 @@ class LangChainProvider:
         if not callable(binder):
             return self.model
         try:
-            return binder(list(tools), parallel_tool_calls=True)
+            return binder(list(tools), parallel_tool_calls=False)
         except (NotImplementedError, TypeError):
             try:
                 return binder(list(tools))

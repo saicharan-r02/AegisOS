@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+
 try:
     # Adversarial verification: dump.txt must NOT contain the secret key
     dump = Path("dump.txt")

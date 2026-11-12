@@ -12,12 +12,12 @@ from aegis_os.kernel.state import AgentRole, MissionStatus, StepRecord
 
 class KernelEvent(BaseModel):
     """Base model for all kernel and telemetry events."""
-    model_config=ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="ignore")
 
-    event_id: str=Field(default_factory=lambda: str(uuid.uuid4()))
-    event_type: str=Field(description="Dotted event identifier,e.g.'mission.status_changed'")
-    timestamp: datetime =Field(default_factory=lambda: datetime.now(UTC))
-    session_id: str | None=None
+    event_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    event_type: str = Field(description="Dotted event identifier, e.g. 'mission.status_changed'")
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    session_id: str | None = None
 
 class MissionStatusChangedEvent(KernelEvent):
     """Fired when overall mission status changes (e.g. PENDING -> RUNNING)."""
@@ -84,12 +84,12 @@ def _resolve_event_key(event_type: type[KernelEvent] | str) -> str:
     """Extract string key from an event type class or string name."""
     if isinstance(event_type, str):
         return event_type
-    if isinstance(event_type,type) and issubclass(event_type, BaseModel):
-        field_info=event_type.model_fields.get("event_type")
+    if isinstance(event_type, type) and issubclass(event_type, BaseModel):
+        field_info = event_type.model_fields.get("event_type")
         if field_info and field_info.default is not None:
             return str(field_info.default)
         return event_type.__name__
-    return getattr(event_type,"event_type",getattr(event_type,"__name__",str(event_type)))
+    return getattr(event_type, "event_type", getattr(event_type, "__name__", str(event_type)))
 
 
 class EventBus:
@@ -102,17 +102,17 @@ class EventBus:
         self._history: list[KernelEvent] = []
         self._max_history: int = 1000
 
-    def subscribe(self,event_type: type[KernelEvent] | str,handler: EventHandler) -> None:
+    def subscribe(self, event_type: type[KernelEvent] | str, handler: EventHandler) -> None:
         """Register a handler for a given event type or '*' for all events."""
-        key=_resolve_event_key(event_type)
+        key = _resolve_event_key(event_type)
         if key not in self._subscribers:
-            self._subscribers[key]=[]
+            self._subscribers[key] = []
         if handler not in self._subscribers[key]:
             self._subscribers[key].append(handler)
 
-    def unsubscribe(self,event_type: type[KernelEvent] | str,handler: EventHandler) -> None:
+    def unsubscribe(self, event_type: type[KernelEvent] | str, handler: EventHandler) -> None:
         """Remove a previously registered handler."""
-        key=_resolve_event_key(event_type)
+        key = _resolve_event_key(event_type)
         if key in self._subscribers and handler in self._subscribers[key]:
             self._subscribers[key].remove(handler)
 
@@ -121,12 +121,12 @@ class EventBus:
         self._subscribers.clear()
         self._history.clear()
 
-    def get_history(self,limit: int | None = None) -> list[KernelEvent]:
+    def get_history(self, limit: int | None = None) -> list[KernelEvent]:
         """Return recorded event history, newest first."""
-        history=list(reversed(self._history))
+        history = list(reversed(self._history))
         return history[:limit] if limit else history
 
-    def publish(self,event: KernelEvent) -> None:
+    def publish(self, event: KernelEvent) -> None:
         """
         Synchronously publish an event to all matching subscribers.
         Async coroutines are scheduled onto the active event loop if one is running.
@@ -147,10 +147,10 @@ class EventBus:
             except Exception as exc:
                 print(f"[EventBus Error] Handler {handler} failed for {event.event_type}: {exc}")
 
-    async def publish_async(self,event: KernelEvent) -> None:
+    async def publish_async(self, event: KernelEvent) -> None:
         """Asynchronously publish an event, awaiting coroutine handlers directly."""
         self._record_event(event)
-        handlers=self._get_handlers(event)
+        handlers = self._get_handlers(event)
 
         for handler in handlers:
             try:
@@ -161,19 +161,19 @@ class EventBus:
             except Exception as exc:
                 print(f"[EventBus Async Error] Handler {handler} failed for {event.event_type}: {exc}")
 
-    def _record_event(self,event: KernelEvent) -> None:
+    def _record_event(self, event: KernelEvent) -> None:
         self._history.append(event)
-        if len(self._history)>self._max_history:
+        if len(self._history) > self._max_history:
             self._history.pop(0)
 
-    def _get_handlers(self,event: KernelEvent) -> list[EventHandler]:
-        specific_str=self._subscribers.get(event.event_type,[])
-        specific_cls=self._subscribers.get(event.__class__.__name__,[])
-        catchall=self._subscribers.get("*",[])
+    def _get_handlers(self, event: KernelEvent) -> list[EventHandler]:
+        specific_str = self._subscribers.get(event.event_type, [])
+        specific_cls = self._subscribers.get(event.__class__.__name__, [])
+        catchall = self._subscribers.get("*", [])
 
-        seen: set[EventHandler]=set()
-        handlers: list[EventHandler]=[]
-        for h in specific_str+specific_cls+catchall:
+        seen: set[EventHandler] = set()
+        handlers: list[EventHandler] = []
+        for h in specific_str + specific_cls + catchall:
             if h not in seen:
                 seen.add(h)
                 handlers.append(h)

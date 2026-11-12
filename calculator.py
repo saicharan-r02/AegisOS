@@ -1,12 +1,27 @@
-"""Calculator module providing basic arithmetic operations.
+"""Basic arithmetic helpers.
 
-This module exposes four functions — :func:`add`, :func:`subtract`,
-:func:`multiply`, and :func:`divide` — that perform the corresponding
-arithmetic operation on two numeric operands.
+This module exposes four small, dependency-free functions that implement the
+most common arithmetic operations.  They are intentionally thin wrappers
+around the corresponding Python operators so that they are trivial to read,
+reuse and unit test.
+
+Example:
+    >>> from calculator import add, divide
+    >>> add(2, 3)
+    5
+    >>> divide(10, 4)
+    2.5
 """
 
+from __future__ import annotations
 
-def add(a: float, b: float) -> float:
+__all__ = ["add", "subtract", "multiply", "divide"]
+
+#: Any numeric type accepted by the calculator functions.
+Number = int | float
+
+
+def add(a: Number, b: Number) -> Number:
     """Return the sum of *a* and *b*.
 
     Args:
@@ -15,11 +30,14 @@ def add(a: float, b: float) -> float:
 
     Returns:
         The result of ``a + b``.
+
+    Raises:
+        TypeError: If either operand is not a number.
     """
     return a + b
 
 
-def subtract(a: float, b: float) -> float:
+def subtract(a: Number, b: Number) -> Number:
     """Return the difference of *a* and *b*.
 
     Args:
@@ -28,11 +46,14 @@ def subtract(a: float, b: float) -> float:
 
     Returns:
         The result of ``a - b``.
+
+    Raises:
+        TypeError: If either operand is not a number.
     """
     return a - b
 
 
-def multiply(a: float, b: float) -> float:
+def multiply(a: Number, b: Number) -> Number:
     """Return the product of *a* and *b*.
 
     Args:
@@ -41,11 +62,14 @@ def multiply(a: float, b: float) -> float:
 
     Returns:
         The result of ``a * b``.
+
+    Raises:
+        TypeError: If either operand is not a number.
     """
     return a * b
 
 
-def divide(a: float, b: float) -> float:
+def divide(a: Number, b: Number) -> float:
     """Return the quotient of *a* divided by *b*.
 
     Args:
@@ -53,10 +77,11 @@ def divide(a: float, b: float) -> float:
         b: Divisor. Must not be zero.
 
     Returns:
-        The result of ``a / b``.
+        The result of ``a / b`` as a floating point number.
 
     Raises:
-        ValueError: If *b* is zero.
+        ValueError: If *b* is zero (including ``0.0`` and ``-0.0``).
+        TypeError: If either operand is not a number.
     """
     if b == 0:
         raise ValueError("Cannot divide by zero.")

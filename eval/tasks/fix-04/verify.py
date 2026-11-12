@@ -1,4 +1,5 @@
 import sys
+
 try:
     from currency import format_cents
     assert format_cents(1050) == "$10.50"

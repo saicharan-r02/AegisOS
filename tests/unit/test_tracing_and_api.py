@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 
 from aegis_os.api import app, init_app
-from aegis_os.api_models import MissionLaunchRequest
 from aegis_os.kernel.checkpoint import CheckpointStore
-from aegis_os.kernel.state import AgentRole, AgentState, MissionStatus, StepRecord, StepStatus
+from aegis_os.kernel.state import AgentRole, AgentState, MissionStatus, StepRecord
 from aegis_os.security.redactor import SecretRedactor
 from aegis_os.tracing.models import SpanStatus, SpanType
 from aegis_os.tracing.replay import ReplayEngine

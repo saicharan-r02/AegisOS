@@ -1,3 +1,5 @@
+import os
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -8,35 +10,35 @@ from aegis_os.kernel.checkpoint import CheckpointStore
 from aegis_os.kernel.context import redact_sensitive_text
 from aegis_os.kernel.events import EventBus
 from aegis_os.kernel.state_machine import MissionOrchestrator
+from aegis_os.sandbox.docker_sandbox import DockerSandbox
+from aegis_os.sandbox.quotas import ExecutionQuota
+from aegis_os.sandbox.subprocess_sandbox import SubprocessSandbox
 from eval.models import BenchmarkTask, JudgeResult
 
 
 class AegisJudge:
-    def __init__(self, provider: str | None = None, model: str | None = None, max_repairs: int = 3, max_steps: int = 50):
+    def __init__(self, provider: str | None = None, model: str | None = None, max_repairs: int = 3, max_steps: int = 50, unsafe_local: bool = False):
         self.provider = provider
         self.model = model
         self.max_repairs = max_repairs
         self.max_steps = max_steps
+        self.unsafe_local=unsafe_local
 
     def run_task(self, task: BenchmarkTask) -> JudgeResult:
         with tempfile.TemporaryDirectory() as temp_dir:
             ws_path = Path(temp_dir).resolve()
 
-            # Setup initial files
             for rel_path, content in task.initial_files.items():
                 file_path = ws_path / rel_path
                 file_path.parent.mkdir(parents=True, exist_ok=True)
                 file_path.write_text(content, encoding="utf-8")
 
-            # Initialize Git
             subprocess.run(["git", "init"], cwd=ws_path, capture_output=True, check=True)
             subprocess.run(["git", "config", "user.name", "AegisOS Benchmark"], cwd=ws_path, capture_output=True, check=True)
             subprocess.run(["git", "config", "user.email", "benchmark@aegisos.ai"], cwd=ws_path, capture_output=True, check=True)
 
-            # Track time
             start_time = time.time()
 
-            # Execute Mission
             db_path = ws_path / ".aegis" / "checkpoints.db"
             db_path.parent.mkdir(parents=True, exist_ok=True)
             store = CheckpointStore(db_path=db_path)
@@ -49,7 +51,8 @@ class AegisJudge:
                 checkpoint_store=store,
                 event_bus=bus,
                 max_repair_cycles=self.max_repairs,
-                max_steps=self.max_steps
+                max_steps=self.max_steps,
+                unsafe_local=self.unsafe_local,
             )
 
             summary = orchestrator.execute_mission(task.goal)
@@ -70,25 +73,30 @@ class AegisJudge:
                     item+=f" output={redact_sensitive_text(step.tool_result.output)[:240]}"
                 trace.append(item)
 
-            # Verification
             verification_script_path = ws_path / "verify.py"
             verification_script_path.write_text(task.verification_script, encoding="utf-8")
 
             try:
-                result = subprocess.run(
-                    [sys.executable, "verify.py"],
-                    cwd=ws_path,
-                    capture_output=True,
-                    text=True,
-                    timeout=10
+                verifier_sandbox=(SubprocessSandbox() if self.unsafe_local else DockerSandbox(ws_path))
+                verification_command=(
+                    subprocess.list2cmdline([sys.executable,"verify.py"])
+                    if self.unsafe_local and os.name=="nt"
+                    else shlex.join([sys.executable,"verify.py"])
+                    if self.unsafe_local
+                    else "python verify.py"
                 )
-                passed = (result.returncode == 0)
+                result=verifier_sandbox.execute_command(
+                    verification_command,
+                    cwd=ws_path,
+                    quota=ExecutionQuota(timeout_seconds=10),
+                )
+                passed=result.success
                 verification_output="\n".join(
                     part.strip() for part in (result.stdout,result.stderr) if part and part.strip()
                 )
                 error_parts=[]
                 if not passed:
-                    error_parts.append(f"Verifier exited with code {result.returncode}.")
+                    error_parts.append(f"Verifier exited with code {result.exit_code}.")
                     if verification_output:
                         error_parts.append(verification_output)
                 if summary.error:

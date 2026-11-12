@@ -1,4 +1,5 @@
 import sys
+
 try:
     from math_ops import factorial
     assert factorial(5) == 120

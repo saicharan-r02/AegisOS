@@ -1,0 +1,12 @@
+FROM python:3.12-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN groupadd --gid 1000 aegis \
+    && useradd --uid 1000 --gid aegis --create-home aegis \
+    && pip install --no-cache-dir pytest ruff mypy bandit detect-secrets coverage
+
+WORKDIR /workspace
+USER 1000:1000

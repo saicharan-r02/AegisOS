@@ -1,4 +1,5 @@
 import sys
+
 try:
     from nested import safe_nested_get
     data = {"a": {"b": {"c": 42}}}

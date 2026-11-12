@@ -5,11 +5,13 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
+
 from pydantic import BaseModel, Field
 
 
 class SpanType(str, Enum):
     """Categorization of an execution span."""
+
     MISSION = "MISSION"
     AGENT_STEP = "AGENT_STEP"
     LLM_CALL = "LLM_CALL"
@@ -21,6 +23,7 @@ class SpanType(str, Enum):
 
 class SpanStatus(str, Enum):
     """Execution status of a span."""
+
     PENDING = "PENDING"
     RUNNING = "RUNNING"
     SUCCESS = "SUCCESS"
@@ -29,6 +32,7 @@ class SpanStatus(str, Enum):
 
 class SpanRecord(BaseModel):
     """Individual trace span capturing latency, tokens, cost, and redacted I/O."""
+
     span_id: str
     parent_span_id: str | None = None
     mission_id: str
@@ -73,6 +77,7 @@ class SpanRecord(BaseModel):
 
 class MissionTrace(BaseModel):
     """Complete structured trace of a mission containing all nested spans."""
+
     mission_id: str
     objective: str
     started_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import time
-from typing import Callable
+from collections.abc import Callable
 from pathlib import Path
 
 from aegis_os.kernel.checkpoint import CheckpointStore
 from aegis_os.kernel.state import StepRecord
-from aegis_os.tracing.tracer import MissionTracer
 from aegis_os.tracing.models import MissionTrace, SpanRecord
+from aegis_os.tracing.tracer import MissionTracer
 
 
 class ReplayEngine:

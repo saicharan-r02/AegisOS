@@ -2,16 +2,11 @@
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
-from typing import Any
 
 from aegis_os.cli.display import AegisDisplay
-from aegis_os.intelligence.repo_map import RepoMapGenerator
-from aegis_os.intelligence.search import CodebaseSearchEngine
-from aegis_os.kernel.llm import LLMFactory
-from aegis_os.sandbox.path_guard import PathGuard
-from aegis_os.sandbox.subprocess_sandbox import SubprocessSandbox
+from aegis_os.intelligence.repo_map import RepoMap
+from aegis_os.intelligence.search import CodeSearchEngine
 from aegis_os.tools.filesystem_tools import ListDirTool, ReadFileTool
 from aegis_os.tools.git_tools import GitDiffTool, GitStatusTool
 from aegis_os.tools.registry import ToolRegistry
@@ -34,21 +29,26 @@ class AegisChatSession:
         self._init_tools()
 
     def _init_tools(self) -> None:
-        path_guard = PathGuard(self.workspace_root)
-        sandbox = SubprocessSandbox(self.workspace_root)
-
-        self.registry.register(ReadFileTool(path_guard=path_guard))
-        self.registry.register(ListDirTool(path_guard=path_guard))
-        self.registry.register(GitStatusTool(sandbox=sandbox))
-        self.registry.register(GitDiffTool(sandbox=sandbox))
+        self.registry.register(ReadFileTool(self.workspace_root))
+        self.registry.register(ListDirTool(self.workspace_root))
+        self.registry.register(GitStatusTool(self.workspace_root))
+        self.registry.register(GitDiffTool(self.workspace_root))
 
     def run_interactive_loop(self) -> int:
         """Run the REPL pairing loop."""
-        self.display.console.print("\n[bold cyan]╔═══════════════════════════════════════════════════════════╗[/bold cyan]")
-        self.display.console.print("[bold cyan]║[/bold cyan]   [bold white]AegisOS Interactive Developer Pairing Shell (v2.0)[/bold white]     [bold cyan]║[/bold cyan]")
-        self.display.console.print("[bold cyan]╚═══════════════════════════════════════════════════════════╝[/bold cyan]")
+        self.display.console.print(
+            "\n[bold cyan]╔═══════════════════════════════════════════════════════════╗[/bold cyan]"
+        )
+        self.display.console.print(
+            "[bold cyan]║[/bold cyan]   [bold white]AegisOS Interactive Developer Pairing Shell (v2.0)[/bold white]     [bold cyan]║[/bold cyan]"
+        )
+        self.display.console.print(
+            "[bold cyan]╚═══════════════════════════════════════════════════════════╝[/bold cyan]"
+        )
         self.display.console.print(f"[dim]Workspace: {self.workspace_root}[/dim]")
-        self.display.console.print("[dim]Type your inquiry, or '/help', '/tools', '/map', '/exit'[/dim]\n")
+        self.display.console.print(
+            "[dim]Type your inquiry, or '/help', '/tools', '/map', '/exit'[/dim]\n"
+        )
 
         while True:
             try:
@@ -70,25 +70,33 @@ class AegisChatSession:
                 self.display.console.print("  /exit    Exit pairing shell")
             elif user_input == "/tools":
                 tools = self.registry.list_tools()
-                self.display.console.print(f"[bold cyan]Registered Tools ({len(tools)}):[/bold cyan]")
+                self.display.console.print(
+                    f"[bold cyan]Registered Tools ({len(tools)}):[/bold cyan]"
+                )
                 for t in tools:
                     self.display.console.print(f"  • [bold]{t.name}[/bold]: {t.description}")
             elif user_input == "/map":
                 self.display.console.print("[dim]Generating RepoMap...[/dim]")
-                rm = RepoMapGenerator(self.workspace_root)
+                rm = RepoMap(self.workspace_root)
                 outline = rm.render_outline(max_tokens=500)
-                self.display.console.print(f"[bold green]Repository Map Outline:[/bold green]\n{outline}")
+                self.display.console.print(
+                    f"[bold green]Repository Map Outline:[/bold green]\n{outline}"
+                )
             else:
                 # Answer inquiry using local search or summary
                 self.display.console.print(f"[dim]Investigating: {user_input}[/dim]")
-                search = CodebaseSearchEngine(self.workspace_root)
+                search = CodeSearchEngine(self.workspace_root)
                 results = search.search(user_input, top_k=3)
                 if results:
                     self.display.console.print("[bold green]Relevant Code References:[/bold green]")
                     for r in results:
-                        self.display.console.print(f"  [cyan]{r.file_path}:{r.line_number}[/cyan] (Score: {r.score:.2f})")
+                        self.display.console.print(
+                            f"  [cyan]{r.file_path}:{r.line_number}[/cyan] (Score: {r.score:.2f})"
+                        )
                         self.display.console.print(f"    [dim]{r.content.strip()[:100]}[/dim]")
                 else:
-                    self.display.console.print("[yellow]No direct code matches located. Use /tools or /map to inspect repository.[/yellow]")
+                    self.display.console.print(
+                        "[yellow]No direct code matches located. Use /tools or /map to inspect repository.[/yellow]"
+                    )
 
         return 0

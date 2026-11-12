@@ -43,10 +43,10 @@ class TestCLIParser:
 
     def test_audit_parser(self) -> None:
         parser=build_parser()
-        args=parser.parse_args(["audit","-t","src/","-p","groq"])
+        args=parser.parse_args(["audit","-t","src/","-p","nvidia"])
         assert args.subcommand=="audit"
         assert args.target=="src/"
-        assert args.provider=="groq"
+        assert args.provider=="nvidia"
 
     def test_test_parser(self) -> None:
         parser=build_parser()
@@ -186,8 +186,10 @@ class TestAegisDisplay:
         )
 
         display.show_sec_report(report)
-
-        output=" ".join(buf.getvalue().split())
+        import re
+        clean_text = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", buf.getvalue())
+        clean_text = re.sub(r"[\u2500-\u257f]", " ", clean_text)
+        output = " ".join(clean_text.split())
         assert "must remain visible in a" in output
         assert "narrow terminal." in output
         assert "without losing its" in output

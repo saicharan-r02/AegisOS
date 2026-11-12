@@ -1,7 +1,7 @@
 from collections.abc import Iterator
 from typing import Any
 
-from aegis_os.tools.base import BaseAegisTool
+from aegis_os.tools.base import BaseAegisTool, ToolResult
 
 
 class ToolRegistry:

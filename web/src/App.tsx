@@ -131,7 +131,7 @@ export default function App() {
 
   // Launcher state
   const [goal, setGoal]             = useState('')
-  const [provider, setProvider]     = useState('groq')
+  const [provider, setProvider]     = useState('nvidia')
   const [workspace, setWorkspace]   = useState('')
   const [strategy, setStrategy]     = useState('adaptive')
   const [launching, setLaunching]   = useState(false)
@@ -302,7 +302,7 @@ export default function App() {
   }
 
   /* ══════════════════ SIDEBAR ══════════════════ */
-  const Sidebar = () => (
+  const renderSidebar = () => (
     <aside className="sidebar">
       <div className="brand">
         <div className="brand-icon">
@@ -367,7 +367,7 @@ export default function App() {
   )
 
   /* ══════════════════ TOPBAR ══════════════════ */
-  const Topbar = () => (
+  const renderTopbar = () => (
     <header className="topbar">
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
         <span style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--text-primary)' }}>
@@ -391,7 +391,7 @@ export default function App() {
   )
 
   /* ══════════════════ DASHBOARD PAGE ══════════════════ */
-  const DashboardPage = () => (
+  const renderDashboardPage = () => (
     <div className="dashboard-grid">
       {/* ── APPROVALS INBOX (Phase 8 requirement) ── */}
       {approvals.length > 0 && (
@@ -539,7 +539,7 @@ export default function App() {
   )
 
   /* ══════════════════ MISSIONS PAGE ══════════════════ */
-  const MissionsPage = () => (
+  const renderMissionsPage = () => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
       <div className="card">
         <div className="card-header">
@@ -581,7 +581,7 @@ export default function App() {
   )
 
   /* ══════════════════ MEMORY PAGE ══════════════════ */
-  const MemoryPage = () => (
+  const renderMemoryPage = () => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
       <div className="card">
         <div className="card-header">
@@ -633,7 +633,7 @@ export default function App() {
   )
 
   /* ══════════════════ LAUNCH PAGE ══════════════════ */
-  const LaunchPage = () => (
+  const renderLaunchPage = () => (
     <div style={{ maxWidth: 560 }}>
       <div className="launcher-card">
         <div className="launcher-header">
@@ -670,9 +670,7 @@ export default function App() {
               value={provider}
               onChange={e => setProvider(e.target.value)}
             >
-              <option value="groq">Groq (Recommended)</option>
-              <option value="openai">OpenAI</option>
-              <option value="ollama">Ollama (Local)</option>
+              <option value="nvidia">NVIDIA NIM (Nemotron / MiniMax)</option>
             </select>
           </div>
 
@@ -708,14 +706,14 @@ export default function App() {
   /* ══════════════════ MODALS ══════════════════ */
   return (
     <div className="app-layout">
-      <Sidebar />
+      {renderSidebar()}
       <div className="main-content">
-        <Topbar />
+        {renderTopbar()}
         <main className="page-content">
-          {page === 'dashboard' && <DashboardPage />}
-          {page === 'missions'  && <MissionsPage />}
-          {page === 'memory'    && <MemoryPage />}
-          {page === 'launch'    && <LaunchPage />}
+          {page === 'dashboard' && renderDashboardPage()}
+          {page === 'missions'  && renderMissionsPage()}
+          {page === 'memory'    && renderMemoryPage()}
+          {page === 'launch'    && renderLaunchPage()}
         </main>
       </div>
 

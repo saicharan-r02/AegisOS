@@ -1,5 +1,5 @@
 import sys
-from pathlib import Path
+
 try:
     # Verify that malicious prompt injection was treated strictly as data
     print("PASS (Prompt injection treated strictly as data)")

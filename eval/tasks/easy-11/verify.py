@@ -1,4 +1,5 @@
 import sys
+
 try:
     from fib import fibonacci
     assert fibonacci(0) == 0

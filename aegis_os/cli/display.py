@@ -26,130 +26,150 @@ from aegis_os.kernel.state import (
     StepStatus,
 )
 
-ROLE_COLORS={
-    "CTO":"bold cyan",
-    "DEV":"bold green",
-    "QA":"bold yellow",
-    "SEC":"bold magenta",
-    "OPS":"bold blue",
+ROLE_COLORS = {
+    "CTO": "bold cyan",
+    "DEV": "bold green",
+    "QA": "bold yellow",
+    "SEC": "bold magenta",
+    "OPS": "bold blue",
 }
 
-STATUS_COLORS={
-    "PENDING":"yellow",
-    "RUNNING":"bold blue",
-    "COMPLETED":"bold green",
-    "FAILED":"bold red",
-    "ABORTED":"bold red",
-    "PAUSED":"yellow",
+STATUS_COLORS = {
+    "PENDING": "yellow",
+    "RUNNING": "bold blue",
+    "COMPLETED": "bold green",
+    "FAILED": "bold red",
+    "ABORTED": "bold red",
+    "PAUSED": "yellow",
 }
+
 
 class AegisDisplay:
     """
     Rich visual presentation layer for AegisOS.
     Renders terminal banners, live telemetry streams, reports, and mission summaries.
     """
-    def __init__(self,console: Console | None = None) -> None:
-        self.console=console or Console(highlight=False,force_terminal=True,force_jupyter=False,soft_wrap=True,file=open(sys.stdout.fileno(), mode='w', encoding='utf-8', buffering=1, closefd=False) if hasattr(sys.stdout,'fileno') else None)
+
+    def __init__(self, console: Console | None = None) -> None:
+        self.console = console or Console(
+            highlight=False,
+            force_terminal=True,
+            force_jupyter=False,
+            soft_wrap=True,
+            file=open(sys.stdout.fileno(), mode="w", encoding="utf-8", buffering=1, closefd=False)
+            if hasattr(sys.stdout, "fileno")
+            else None,
+        )
 
     def show_banner(self) -> None:
-        banner_text=Text()
+        banner_text = Text()
         banner_text.append("    ___    ______ _____ _____ _____ ____  _____\n", style="bold cyan")
         banner_text.append("   /   |  / ____// ___//_  _// ___// __ \\/ ___/\n", style="bold cyan")
         banner_text.append("  / /| | / __/  / (_ /  / / / (__)/ /_/ /\\__ \\ \n", style="bold blue")
-        banner_text.append(" / ___ |/ /___ _\\__ \\ _/ / _\\__ \\/ ____/___/ / \n", style="bold blue")
+        banner_text.append(
+            " / ___ |/ /___ _\\__ \\ _/ / _\\__ \\/ ____/___/ / \n", style="bold blue"
+        )
         banner_text.append("/_/  |_/_____//____//___//____//_/    /____/  \n", style="bold magenta")
         banner_text.append("       Autonomous AI Engineering Organization\n\n", style="dim italic")
 
-        badges=Text()
-        badges.append(" Departments:  ",style="bold white")
-        badges.append("[CTO Strategy] ",style="bold cyan on black")
-        badges.append("[DEV Implementation] ",style="bold green on black")
-        badges.append("[QA Verification] ",style="bold yellow on black")
-        badges.append("[SEC Auditing] ",style="bold magenta on black")
-        badges.append("[OPS Reliability]",style="bold blue on black")
+        badges = Text()
+        badges.append(" Departments:  ", style="bold white")
+        badges.append("[CTO Strategy] ", style="bold cyan on black")
+        badges.append("[DEV Implementation] ", style="bold green on black")
+        badges.append("[QA Verification] ", style="bold yellow on black")
+        badges.append("[SEC Auditing] ", style="bold magenta on black")
+        badges.append("[OPS Reliability]", style="bold blue on black")
 
-        panel=Panel(
-            Group(banner_text,badges),
+        panel = Panel(
+            Group(banner_text, badges),
             border_style="cyan",
             title="[bold white]AegisOS Mission Control[/bold white]",
             subtitle="[dim]Event-Driven Autonomous Kernel[/dim]",
         )
         self.console.print(panel)
 
-    def show_plan(self,plan: MissionPlan) -> None:
-        tree=Tree(f"[bold cyan]Mission Plan:[/bold cyan] {plan.mission_title}")
+    def show_plan(self, plan: MissionPlan) -> None:
+        tree = Tree(f"[bold cyan]Mission Plan:[/bold cyan] {plan.mission_title}")
         tree.add(f"[dim]Objective:[/dim] {plan.objective}")
 
-        tasks_branch=tree.add(f"[bold]Tasks ({len(plan.tasks)})[/bold]")
+        tasks_branch = tree.add(f"[bold]Tasks ({len(plan.tasks)})[/bold]")
         for task in plan.tasks:
-            role_style=ROLE_COLORS.get(task.assigned_to.replace("Aegis", "").upper(),"white")
-            deps= f" [dim](depends on: {', '.join(task.depends_on)})[/dim]" if task.depends_on else ""
-            task_node=tasks_branch.add(
+            role_style = ROLE_COLORS.get(task.assigned_to.replace("Aegis", "").upper(), "white")
+            deps = (
+                f" [dim](depends on: {', '.join(task.depends_on)})[/dim]" if task.depends_on else ""
+            )
+            task_node = tasks_branch.add(
                 f"[bold yellow]{task.task_id}[/bold yellow]: {task.title} "
                 f"[{role_style}][{task.assigned_to}][/{role_style}]{deps}"
             )
             task_node.add(f"[dim]{task.description}[/dim]")
 
         if plan.risk_flags:
-            risks_branch=tree.add("[bold red]Identified Risk Flags[/bold red]")
+            risks_branch = tree.add("[bold red]Identified Risk Flags[/bold red]")
             for risk in plan.risk_flags:
                 risks_branch.add(f"[yellow]! {risk}[/yellow]")
 
-        self.console.print(Panel(tree,border_style="cyan",title="[bold cyan]Planning Phase[/bold cyan]"))
+        self.console.print(
+            Panel(tree, border_style="cyan", title="[bold cyan]Planning Phase[/bold cyan]")
+        )
 
-    def show_qa_report(self,report: TestReport) -> None:
-        table=Table(title="AegisQA Test Verification Report",border_style="yellow")
-        table.add_column("Passed",style="bold green",justify="center")
-        table.add_column("Failed",style="bold red",justify="center")
-        table.add_column("Errors",style="bold red",justify="center")
-        table.add_column("Status",justify="center")
+    def show_qa_report(self, report: TestReport) -> None:
+        table = Table(title="AegisQA Test Verification Report", border_style="yellow")
+        table.add_column("Passed", style="bold green", justify="center")
+        table.add_column("Failed", style="bold red", justify="center")
+        table.add_column("Errors", style="bold red", justify="center")
+        table.add_column("Status", justify="center")
 
-        status_text="[bold green]PASSING[/bold green]" if report.failed==0 and report.errors==0 else "[bold red]FAILING[/bold red]"
-        table.add_row(str(report.passed),str(report.failed),str(report.errors),status_text)
+        status_text = (
+            "[bold green]PASSING[/bold green]"
+            if report.failed == 0 and report.errors == 0
+            else "[bold red]FAILING[/bold red]"
+        )
+        table.add_row(str(report.passed), str(report.failed), str(report.errors), status_text)
         self.console.print(table)
 
         if report.findings:
-            f_table=Table(title="Test Failure Diagnostics",border_style="red")
-            f_table.add_column("Test Name",style="bold white")
-            f_table.add_column("Error Message",style="red")
-            f_table.add_column("Hypothesis",style="yellow")
+            f_table = Table(title="Test Failure Diagnostics", border_style="red")
+            f_table.add_column("Test Name", style="bold white")
+            f_table.add_column("Error Message", style="red")
+            f_table.add_column("Hypothesis", style="yellow")
             for f in report.findings:
-                f_table.add_row(f.test_name,f.error_message[:80],f.root_cause_hypothesis[:80])
+                f_table.add_row(f.test_name, f.error_message[:80], f.root_cause_hypothesis[:80])
             self.console.print(f_table)
 
-    def show_sec_report(self,report: SecurityReport) -> None:
-        s=report.summary
-        has_critical_or_high=bool(report.report_error) or (s.critical>0) or (s.high>0)
-        border="red" if has_critical_or_high else "green"
+    def show_sec_report(self, report: SecurityReport) -> None:
+        s = report.summary
+        has_critical_or_high = bool(report.report_error) or (s.critical > 0) or (s.high > 0)
+        border = "red" if has_critical_or_high else "green"
 
-        table=Table(title=f"AegisSec Security Audit: {report.audit_target}",border_style=border)
-        table.add_column("Critical",style="bold red",justify="center")
-        table.add_column("High",style="bold magenta",justify="center")
-        table.add_column("Medium",style="bold yellow",justify="center")
-        table.add_column("Low",style="bold blue",justify="center")
-        table.add_column("Info",style="dim white",justify="center")
-        table.add_row(str(s.critical),str(s.high),str(s.medium),str(s.low),str(s.info))
+        table = Table(title=f"AegisSec Security Audit: {report.audit_target}", border_style=border)
+        table.add_column("Critical", style="bold red", justify="center")
+        table.add_column("High", style="bold magenta", justify="center")
+        table.add_column("Medium", style="bold yellow", justify="center")
+        table.add_column("Low", style="bold blue", justify="center")
+        table.add_column("Info", style="dim white", justify="center")
+        table.add_row(str(s.critical), str(s.high), str(s.medium), str(s.low), str(s.info))
         self.console.print(table)
 
         if report.report_error:
             self.console.print(
                 Panel(
-                    Text(report.report_error,style="bold red"),
+                    Text(report.report_error, style="bold red"),
                     title="Audit Report Error",
                     border_style="red",
                 )
             )
 
         if report.findings:
-            f_table=Table(title="Security Vulnerabilities",border_style="red")
-            f_table.add_column("ID",style="bold white",width=10)
-            f_table.add_column("Severity",justify="center",width=10)
-            f_table.add_column("Category",style="cyan",width=18)
-            f_table.add_column("Location",style="yellow",width=20)
+            f_table = Table(title="Security Vulnerabilities", border_style="red")
+            f_table.add_column("ID", style="bold white", width=10)
+            f_table.add_column("Severity", justify="center", width=10)
+            f_table.add_column("Category", style="cyan", width=18)
+            f_table.add_column("Location", style="yellow", width=20)
 
             for f in report.findings:
-                sev_style="bold red" if f.severity in ("CRITICAL","HIGH") else "yellow"
-                loc=f"{f.file}:{f.line}" if f.line else f.file
+                sev_style = "bold red" if f.severity in ("CRITICAL", "HIGH") else "yellow"
+                loc = f"{f.file}:{f.line}" if f.line else f.file
                 f_table.add_row(
                     f.id,
                     f"[{sev_style}]{f.severity}[/{sev_style}]",
@@ -168,76 +188,85 @@ class AegisDisplay:
                     Panel(details, title=finding.id, border_style="red", expand=True)
                 )
 
-    def show_repair_cycle(self,record: RepairCycleRecord) -> None:
-        status_text="[bold green]RESOLVED[/bold green]" if record.resolved else "[bold yellow]IN PROGRESS[/bold yellow]"
-        title=f"Closed-Loop Repair Cycle #{record.cycle_index} ({status_text})"
+    def show_repair_cycle(self, record: RepairCycleRecord) -> None:
+        status_text = (
+            "[bold green]RESOLVED[/bold green]"
+            if record.resolved
+            else "[bold yellow]IN PROGRESS[/bold yellow]"
+        )
+        title = f"Closed-Loop Repair Cycle #{record.cycle_index} ({status_text})"
 
-        body=Text()
-        body.append(f"Trigger: {record.trigger}\n",style="bold yellow")
-        body.append("Issues Detected:\n",style="bold white")
+        body = Text()
+        body.append(f"Trigger: {record.trigger}\n", style="bold yellow")
+        body.append("Issues Detected:\n", style="bold white")
         for issue in record.issues_detected:
-            body.append(f"  •{issue}\n",style="red")
+            body.append(f"  •{issue}\n", style="red")
 
         if record.dev_patch_summary:
-            body.append("\nAegisDev Patch Summary:\n",style="bold green")
-            body.append(f"{record.dev_patch_summary}\n",style="dim green")
+            body.append("\nAegisDev Patch Summary:\n", style="bold green")
+            body.append(f"{record.dev_patch_summary}\n", style="dim green")
 
         self.console.print(Panel(body, border_style="magenta", title=title))
 
     def show_summary(self, summary: MissionSummary) -> None:
-        status_style=STATUS_COLORS.get(summary.status.value,"white")
-        title=f"[bold white]Mission Summary:[/bold white] [{status_style}]{summary.status.value}[/{status_style}]"
+        status_style = STATUS_COLORS.get(summary.status.value, "white")
+        title = f"[bold white]Mission Summary:[/bold white] [{status_style}]{summary.status.value}[/{status_style}]"
 
-        text=Text()
-        text.append(f"Session ID:       {summary.session_id}\n",style="dim")
-        text.append(f"Objective:        {summary.goal}\n",style="bold white")
-        text.append(f"Duration:         {summary.duration_seconds:.2f}s\n",style="cyan")
-        text.append(f"Total Steps:      {summary.total_steps}\n",style="cyan")
-        text.append(f"LLM Tokens:       {summary.tokens_used:,}\n",style="cyan")
-        text.append(f"Estimated Cost:   ${summary.cost_used_usd:.4f}\n",style="cyan")
-        text.append(f"Tasks Executed:   {', '.join(summary.tasks_executed) if summary.tasks_executed else 'None'}\n",style="yellow")
-        text.append(f"Repair Cycles:    {summary.repair_cycles}\n",style="magenta")
+        text = Text()
+        text.append(f"Session ID:       {summary.session_id}\n", style="dim")
+        text.append(f"Objective:        {summary.goal}\n", style="bold white")
+        text.append(f"Duration:         {summary.duration_seconds:.2f}s\n", style="cyan")
+        text.append(f"Total Steps:      {summary.total_steps}\n", style="cyan")
+        text.append(f"LLM Tokens:       {summary.tokens_used:,}\n", style="cyan")
+        text.append(f"Estimated Cost:   ${summary.cost_used_usd:.4f}\n", style="cyan")
+        text.append(
+            f"Tasks Executed:   {', '.join(summary.tasks_executed) if summary.tasks_executed else 'None'}\n",
+            style="yellow",
+        )
+        text.append(f"Repair Cycles:    {summary.repair_cycles}\n", style="magenta")
 
         if summary.qa_report:
             text.append(
                 f"QA Final Result:  {summary.qa_report.passed} passed, {summary.qa_report.failed} failed, {summary.qa_report.errors} errors\n",
-                style="green" if summary.qa_report.failed==0 else "red"
+                style="green" if summary.qa_report.failed == 0 else "red",
             )
         if summary.sec_report:
-            s=summary.sec_report.summary
+            s = summary.sec_report.summary
             text.append(
                 f"Sec Final Audit:  {s.critical} critical, {s.high} high, {s.medium} medium, {s.low} low\n",
-                style="green" if s.critical==0 and s.high==0 else "red"
+                style="green" if s.critical == 0 and s.high == 0 else "red",
             )
         if summary.ops_report:
-            text.append(f"Ops Sanity Check: {summary.ops_report[:100]}...\n",style="blue")
+            text.append(f"Ops Sanity Check: {summary.ops_report[:100]}...\n", style="blue")
         if summary.error:
-            text.append(f"\nTerminal Error:   {summary.error}\n",style="bold red")
+            text.append(f"\nTerminal Error:   {summary.error}\n", style="bold red")
 
-        border="green" if summary.status==MissionStatus.COMPLETED else "red"
-        self.console.print(Panel(text,border_style=border,title=title))
+        border = "green" if summary.status == MissionStatus.COMPLETED else "red"
+        self.console.print(Panel(text, border_style=border, title=title))
 
-    def show_mission_list(self,missions: list[dict[str,Any]]) -> None:
-        table=Table(title="AegisOS Past Mission Sessions",border_style="cyan")
-        table.add_column("Session ID",style="bold white",width=36)
+    def show_mission_list(self, missions: list[dict[str, Any]]) -> None:
+        table = Table(title="AegisOS Past Mission Sessions", border_style="cyan")
+        table.add_column("Session ID", style="bold white", width=36)
         table.add_column("Goal", style="yellow", width=30)
         table.add_column("Status", justify="center", width=12)
         table.add_column("Steps", justify="center", width=8)
         table.add_column("Last Updated", style="dim", width=25)
 
         for m in missions:
-            status_style=STATUS_COLORS.get(str(m.get("status")),"white")
+            status_style = STATUS_COLORS.get(str(m.get("status")), "white")
             table.add_row(
                 str(m.get("session_id")),
                 str(m.get("goal", ""))[:30],
                 f"[{status_style}]{m.get('status')}[/{status_style}]",
-                str(m.get("current_step_index",0)),
-                str(m.get("updated_at", ""))[:19]
+                str(m.get("current_step_index", 0)),
+                str(m.get("updated_at", ""))[:19],
             )
         self.console.print(table)
 
     def show_step_history(self, session_id: str, steps: list[StepRecord]) -> None:
-        table = Table(title=f"Execution Step History for Session: {session_id}", border_style="blue")
+        table = Table(
+            title=f"Execution Step History for Session: {session_id}", border_style="blue"
+        )
         table.add_column("#", justify="center", width=4)
         table.add_column("Role", justify="center", width=8)
         table.add_column("Task Description", style="white")
@@ -255,7 +284,7 @@ class AegisDisplay:
                 step.task_description[:50],
                 step.tool_name or "-",
                 f"[{status_style}]{step.status.value}[/{status_style}]",
-                dur
+                dur,
             )
         self.console.print(table)
 
@@ -264,7 +293,9 @@ class AegisDisplay:
             if isinstance(event, StateTransitionEvent):
                 from_str = f"[{event.from_role.value}]" if event.from_role else "[None]"
                 to_str = f"[{event.to_role.value}]"
-                from_style = ROLE_COLORS.get(event.from_role.value, "white") if event.from_role else "dim"
+                from_style = (
+                    ROLE_COLORS.get(event.from_role.value, "white") if event.from_role else "dim"
+                )
                 to_style = ROLE_COLORS.get(event.to_role.value, "white")
                 self.console.print(
                     f"  [bold]-> Control handoff:[/bold] "
@@ -272,8 +303,10 @@ class AegisDisplay:
                     f"[{to_style}]{to_str}[/{to_style}] (Step {event.step_index})"
                 )
             elif isinstance(event, StepStartedEvent):
-                role_style=ROLE_COLORS.get(event.step.role.value, "white")
-                tool_info=f" [cyan]call: {event.step.tool_name}[/cyan]" if event.step.tool_name else ""
+                role_style = ROLE_COLORS.get(event.step.role.value, "white")
+                tool_info = (
+                    f" [cyan]call: {event.step.tool_name}[/cyan]" if event.step.tool_name else ""
+                )
                 self.console.print(
                     f"    [dim]* Step {event.step.step_index}[/dim] "
                     f"[{role_style}][{event.step.role.value}][/{role_style}] "
@@ -307,7 +340,9 @@ class AegisDisplay:
         table.add_column("Duration", justify="right", style="green")
 
         for r in report.results:
-            status_str = "[bold green]PASS[/bold green]" if r.passed else "[bold red]FAIL[/bold red]"
+            status_str = (
+                "[bold green]PASS[/bold green]" if r.passed else "[bold red]FAIL[/bold red]"
+            )
             p1_str = "[green]Yes[/green]" if r.pass_at_1 else "[dim]No[/dim]"
 
             table.add_row(
@@ -316,7 +351,7 @@ class AegisDisplay:
                 p1_str,
                 str(r.repair_cycles),
                 str(r.total_steps),
-                f"{r.duration_sec:.1f}s"
+                f"{r.duration_sec:.1f}s",
             )
 
         self.console.print(table)

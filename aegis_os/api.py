@@ -3,17 +3,17 @@
 from __future__ import annotations
 
 import asyncio
+import logging
+import os
+import subprocess
+import time
 from collections import deque
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
-import logging
-import os
 from pathlib import Path
-import subprocess
-import time
 from typing import Any
 
-from fastapi import FastAPI, Header, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -82,7 +82,10 @@ app = FastAPI(
 )
 
 # CORS: configured for local dev and configurable allowed origins
-_allowed_origins = os.getenv("AEGIS_ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000,http://127.0.0.1:8000,http://localhost:8000").split(",")
+_allowed_origins = os.getenv(
+    "AEGIS_ALLOWED_ORIGINS",
+    "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000,http://127.0.0.1:8000,http://localhost:8000",
+).split(",")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins if "*" not in _allowed_origins else ["*"],
@@ -97,7 +100,11 @@ async def security_and_rate_limit_middleware(request: Request, call_next):
     """Enforce API token authentication and rate limiting on REST endpoints."""
     # Skip auth for docs, openapi, static assets, and websocket handshake
     path = request.url.path
-    if path in {"/docs", "/openapi.json", "/redoc", "/api/events"} or path.startswith("/assets") or not path.startswith("/api/"):
+    if (
+        path in {"/docs", "/openapi.json", "/redoc", "/api/events"}
+        or path.startswith("/assets")
+        or not path.startswith("/api/")
+    ):
         return await call_next(request)
 
     # 1. Rate Limiting
@@ -107,7 +114,9 @@ async def security_and_rate_limit_middleware(request: Request, call_next):
     # purge old entries
     _rate_limits[client_ip] = [t for t in history if now - t < _RATE_LIMIT_WINDOW]
     if len(_rate_limits[client_ip]) >= _RATE_LIMIT_MAX_REQUESTS:
-        return JSONResponse(status_code=429, content={"detail": "Rate limit exceeded. Try again in 60s."})
+        return JSONResponse(
+            status_code=429, content={"detail": "Rate limit exceeded. Try again in 60s."}
+        )
     _rate_limits[client_ip].append(now)
 
     # 2. Token Auth if AEGIS_API_TOKEN is set
@@ -115,7 +124,9 @@ async def security_and_rate_limit_middleware(request: Request, call_next):
     if configured_token:
         provided_token = request.headers.get("X-Aegis-Token") or request.query_params.get("token")
         if not provided_token or provided_token != configured_token:
-            return JSONResponse(status_code=401, content={"detail": "Invalid or missing X-Aegis-Token header"})
+            return JSONResponse(
+                status_code=401, content={"detail": "Invalid or missing X-Aegis-Token header"}
+            )
 
     return await call_next(request)
 
@@ -161,6 +172,7 @@ async def launch_mission(req: MissionLaunchRequest):
     if global_bus:
         from aegis_os.kernel.events import MissionStatusChangedEvent
         from aegis_os.kernel.state import MissionStatus
+
         global_bus.publish(
             MissionStatusChangedEvent(
                 session_id=session_id,
@@ -221,7 +233,9 @@ def get_mission_diff(session_id: str):
         files = [line.strip() for line in name_check.stdout.splitlines() if line.strip()]
         return MissionDiffResponse(session_id=session_id, diff=diff_text, files_changed=files)
     except Exception as exc:
-        return MissionDiffResponse(session_id=session_id, diff=f"Error computing diff: {exc}", files_changed=[])
+        return MissionDiffResponse(
+            session_id=session_id, diff=f"Error computing diff: {exc}", files_changed=[]
+        )
 
 
 @app.get("/api/missions/{session_id}/acceptance", response_model=AcceptanceCriteriaResponse)
@@ -233,19 +247,23 @@ def get_mission_acceptance(session_id: str):
     if state and state.plan:
         for idx, task in enumerate(state.plan.tasks, start=1):
             for c_idx, crit in enumerate(task.acceptance_criteria, start=1):
-                items.append(AcceptanceItem(
-                    id=f"{task.id}-crit-{c_idx}",
-                    description=crit,
-                    passed=(task.status.value == "SUCCESS"),
-                    evidence=f"Task {task.id} verified via {task.verification_command or 'tests'}"
-                ))
+                items.append(
+                    AcceptanceItem(
+                        id=f"{task.id}-crit-{c_idx}",
+                        description=crit,
+                        passed=(task.status.value == "SUCCESS"),
+                        evidence=f"Task {task.id} verified via {task.verification_command or 'tests'}",
+                    )
+                )
     else:
-        items.append(AcceptanceItem(
-            id="crit-1",
-            description="All automated tests pass",
-            passed=True,
-            evidence="Pytest suite green"
-        ))
+        items.append(
+            AcceptanceItem(
+                id="crit-1",
+                description="All automated tests pass",
+                passed=True,
+                evidence="Pytest suite green",
+            )
+        )
     return AcceptanceCriteriaResponse(session_id=session_id, criteria=items)
 
 
@@ -319,7 +337,7 @@ def act_on_approval(approval_id: str, req: ApprovalActionRequest):
 @app.get("/api/memory")
 def get_memory_records():
     """Return stored episodic memories and learned conventions."""
-    mem_store = MemoryStore()
+    mem_store = MemoryStore(workspace_root=Path.cwd())
     episodes = mem_store.get_all_episodes()
     conventions = mem_store.get_all_conventions()
     return {

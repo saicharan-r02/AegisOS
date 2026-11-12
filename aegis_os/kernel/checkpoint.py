@@ -12,16 +12,17 @@ class CheckpointStore:
     SQLite-backed transactional state store.
     Enforces Write-Ahead Logging (WAL) mode for concurrent readers and writers.
     """
-    def __init__(self,db_path: str | Path = ":memory:") -> None:
-        self.db_path =str(db_path)
-        self._conn =sqlite3.connect(self.db_path,check_same_thread=False)
-        self._conn.row_factory=sqlite3.Row
+
+    def __init__(self, db_path: str | Path = ":memory:") -> None:
+        self.db_path = str(db_path)
+        self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
+        self._conn.row_factory = sqlite3.Row
         self._init_db()
 
-    def _init_db(self)->None:
+    def _init_db(self) -> None:
         """Initialize database schema and set WAL pragma."""
         with self._conn:
-            if self.db_path!=":memory:":
+            if self.db_path != ":memory:":
                 self._conn.execute("PRAGMA journal_mode = WAL;")
             self._conn.execute("PRAGMA busy_timeout = 5000;")
             self._conn.execute("PRAGMA foreign_keys = ON;")
@@ -63,13 +64,13 @@ class CheckpointStore:
                 );
             """)
 
-    def save_checkpoint(self,state: AgentState) -> int:
+    def save_checkpoint(self, state: AgentState) -> int:
         """
         Persist mission state, step history, and a point-in-time snapshot.
         Returns the checkpoint ID.
         """
-        now_str=datetime.now(UTC).isoformat()
-        state_json=state.model_dump_json()
+        now_str = datetime.now(UTC).isoformat()
+        state_json = state.model_dump_json()
         with self._conn:
             self._conn.execute(
                 """
@@ -113,7 +114,7 @@ class CheckpointStore:
                     ),
                 )
 
-            cursor=self._conn.execute(
+            cursor = self._conn.execute(
                 """
                 INSERT INTO checkpoints (session_id, step_index, state_snapshot_json, created_at)
                 VALUES (?, ?, ?, ?)
@@ -121,7 +122,7 @@ class CheckpointStore:
                     state_snapshot_json=excluded.state_snapshot_json,
                     created_at=excluded.created_at;
                 """,
-                (state.session_id,state.current_step_index,state_json,now_str),
+                (state.session_id, state.current_step_index, state_json, now_str),
             )
             return cursor.lastrowid or 0
 
@@ -146,13 +147,13 @@ class CheckpointStore:
             SELECT state_snapshot_json FROM checkpoints
             WHERE session_id = ? AND step_index = ?
             """,
-            (session_id,target_step_index),
+            (session_id, target_step_index),
         )
-        row=cursor.fetchone()
+        row = cursor.fetchone()
         if not row:
-            raise CheckpointNotFoundError(session_id=session_id,step_index=target_step_index)
+            raise CheckpointNotFoundError(session_id=session_id, step_index=target_step_index)
 
-        restored_state=AgentState.model_validate_json(row["state_snapshot_json"])
+        restored_state = AgentState.model_validate_json(row["state_snapshot_json"])
 
         with self._conn:
             self._conn.execute(
@@ -184,7 +185,7 @@ class CheckpointStore:
 
     def list_missions(self) -> list[dict[str, Any]]:
         """Return all tracked missions for audit and dashboard view."""
-        cursor=self._conn.execute(
+        cursor = self._conn.execute(
             "SELECT session_id, goal, status, current_step_index, created_at, updated_at FROM missions ORDER BY updated_at DESC"
         )
         return [dict(row) for row in cursor.fetchall()]

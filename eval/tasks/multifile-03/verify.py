@@ -1,4 +1,5 @@
 import sys
+
 try:
     from database.repo import Repo
     r = Repo()

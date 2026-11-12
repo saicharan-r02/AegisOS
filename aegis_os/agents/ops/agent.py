@@ -25,25 +25,46 @@ class AegisOps(BaseAgent):
     - CANNOT write source files or commit.
     """
 
-    def __init__(self,workspace_root: Path,llm_provider: str | None = None,llm_model: str | None = None,max_steps: int = 20,state_machine: StateMachine | None = None):
+    def __init__(
+        self,
+        workspace_root: Path,
+        llm_provider: str | None = None,
+        llm_model: str | None = None,
+        max_steps: int = 20,
+        state_machine: StateMachine | None = None,
+        unsafe_local: bool = False,
+    ):
         registry = ToolRegistry()
         registry.register(ReadFileTool(workspace_root))
         registry.register(ListDirTool(workspace_root))
-        registry.register(GitStatusTool())
-        registry.register(GitDiffTool())
-        registry.register(ExecuteCommandTool(workspace_root))
+        registry.register(GitStatusTool(workspace_root))
+        registry.register(GitDiffTool(workspace_root))
+        registry.register(ExecuteCommandTool(workspace_root, unsafe_local=unsafe_local))
 
-        llm = get_llm(provider=llm_provider, model_name=llm_model, role=AgentRole.OPS,workspace_root=workspace_root)
+        llm = get_llm(
+            provider=llm_provider,
+            model_name=llm_model,
+            role=AgentRole.OPS,
+            workspace_root=workspace_root,
+        )
 
-        super().__init__(name="AegisOps",role=AgentRole.OPS,llm=llm,tools=registry,system_prompt=SYSTEM_PROMPT,max_steps=max_steps,state_machine=state_machine)
-        self.workspace_root=workspace_root
+        super().__init__(
+            name="AegisOps",
+            role=AgentRole.OPS,
+            llm=llm,
+            tools=registry,
+            system_prompt=SYSTEM_PROMPT,
+            max_steps=max_steps,
+            state_machine=state_machine,
+        )
+        self.workspace_root = workspace_root
 
     def health_check(self) -> str:
         """
         Run a full operational health check and return the report as text.
         Covers: build status, dependency audit, git hygiene.
         """
-        prompt=(
+        prompt = (
             "Please run a full operational health check on this project. "
             "Check: (1) that the package imports successfully, "
             "(2) dependencies are correctly installed per requirements.txt, "

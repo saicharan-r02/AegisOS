@@ -1,4 +1,5 @@
 import sys
+
 try:
     from chunker import chunk_list
     assert chunk_list([1, 2, 3, 4, 5], 2) == [[1, 2], [3, 4], [5]]

@@ -1,5 +1,6 @@
-import sys
 import subprocess
+import sys
+
 try:
     res = subprocess.run(["node", "-e", "const { sumArray } = require('./math.js'); if (sumArray([1, 2, 3, 4]) !== 10) process.exit(1);"], capture_output=True)
     if res.returncode == 0:

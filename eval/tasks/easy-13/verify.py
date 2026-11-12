@@ -1,4 +1,5 @@
 import sys
+
 try:
     from lists import flatten
     assert flatten([1, [2, [3, 4], 5], 6]) == [1, 2, 3, 4, 5, 6]

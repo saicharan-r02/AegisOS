@@ -1,4 +1,5 @@
 import sys
+
 try:
     from auth.middleware import authenticate_request
     assert authenticate_request("bearer-valid-12345") is True

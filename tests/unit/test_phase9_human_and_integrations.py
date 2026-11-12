@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 from pathlib import Path
-import pytest
 
 from aegis_os.config.validator import validate_config_file
 from aegis_os.integrations.github import GitHubIntegration, GitHubIssue
-from aegis_os.mcp.client import MCPClient, MCPToolDefinition, PluginManager
+from aegis_os.mcp.client import MCPClient, MCPToolDefinition
 from aegis_os.orchestration.modes import AutonomyMode, ModeController
 from aegis_os.sandbox.policy import CommandPolicy
 from aegis_os.tools.base import ToolResult

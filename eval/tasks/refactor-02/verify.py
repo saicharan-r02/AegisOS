@@ -1,7 +1,8 @@
 import sys
+
 try:
-    from validators import Validator
     from user_service import register_user
+    from validators import Validator
     assert Validator.is_valid_email("admin@aegis.os") is True
     assert register_user("bademail") is False
     print("PASS")

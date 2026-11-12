@@ -12,7 +12,9 @@ class SecretRedactor:
 
     _PATTERNS: ClassVar[list[re.Pattern[str]]] = [
         # Generic API keys and tokens
-        re.compile(r"(?i)(?:api_key|apikey|secret|token|password|auth_token)\s*[:=]\s*['\"]?([A-Za-z0-9_\-\.]{16,})['\"]?"),
+        re.compile(
+            r"(?i)(?:api_key|apikey|secret|token|password|auth_token)\s*[:=]\s*['\"]?([A-Za-z0-9_\-\.]{16,})['\"]?"
+        ),
         # OpenAI style
         re.compile(r"sk-[A-Za-z0-9_\-]{20,}"),
         # Anthropic style

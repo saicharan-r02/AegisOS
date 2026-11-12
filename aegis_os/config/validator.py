@@ -1,20 +1,25 @@
-"""Configuration schema validation for aegis.toml."""
-
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Any
 import tomllib
+from pathlib import Path
+
 from pydantic import BaseModel, Field, ValidationError
 
+
+class FallbackModelConfig(BaseModel):
+    provider: str
+    model: str
+    base_url: str | None = None
+    api_key_env: str | None = None
+    native_tool_calling: bool = True
 
 class RoleLLMConfig(BaseModel):
     provider: str
     model: str
+    native_tool_calling: bool = True
     context_tokens: int = Field(default=100_000, ge=1000)
     max_tool_output_tokens: int = Field(default=2000, ge=100)
-    fallback: list[dict[str, str]] = Field(default_factory=list)
-
+    fallback: list[FallbackModelConfig] = Field(default_factory=list)
 
 class LLMGlobalConfig(BaseModel):
     default_provider: str
@@ -27,10 +32,8 @@ class LLMGlobalConfig(BaseModel):
     max_wall_seconds: float = Field(default=1800.0, ge=10.0)
     roles: dict[str, RoleLLMConfig] = Field(default_factory=dict)
 
-
 class AegisTomlSchema(BaseModel):
     llm: LLMGlobalConfig
-
 
 def validate_config_file(path: Path | str) -> tuple[bool, list[str]]:
     """

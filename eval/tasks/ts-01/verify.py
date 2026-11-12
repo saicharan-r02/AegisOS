@@ -1,4 +1,5 @@
 import sys
+
 try:
     code = open("types.ts").read()
     assert "interface UserProfile" in code

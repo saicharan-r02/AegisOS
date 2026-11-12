@@ -1,4 +1,5 @@
 import sys
+
 try:
     code = open("slug.js").read()
     assert "slugify" in code

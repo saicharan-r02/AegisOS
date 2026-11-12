@@ -117,7 +117,9 @@ class GitHubIntegration:
             crit = security_summary.get("critical", 0)
             high = security_summary.get("high", 0)
             lines.append(f"- **OWASP / Static Scan**: 0 Critical, {high} High, {crit} Blockers")
-            lines.append("- **PathGuard Isolation**: All modifications bounded inside workspace root.")
+            lines.append(
+                "- **PathGuard Isolation**: All modifications bounded inside workspace root."
+            )
         else:
             lines.append("- Static analysis & PathGuard checks passed with 0 critical findings.")
 
@@ -129,5 +131,7 @@ class GitHubIntegration:
         lines.append(f"- **Tokens Consumed**: {tokens:,}")
         lines.append(f"- **Estimated Cost**: ${cost:.4f}")
 
-        lines.append("\n---\n*Authored autonomously by [AegisOS](https://github.com/saicharan-r02/AegisOS) v2.0*")
+        lines.append(
+            "\n---\n*Authored autonomously by [AegisOS](https://github.com/saicharan-r02/AegisOS) v2.0*"
+        )
         return "\n".join(lines)

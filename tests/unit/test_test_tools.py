@@ -5,7 +5,7 @@ from aegis_os.tools.test_tools import PytestRunnerArgs, PytestRunnerTool
 
 class TestPytestRunnerTool:
     def test_run_pytest_against_known_passing_test(self) -> None:
-        tool=PytestRunnerTool()
+        tool=PytestRunnerTool(Path.cwd(),unsafe_local=True)
         result=tool._execute(
             PytestRunnerArgs(
                 target="tests/unit/test_state.py::TestStepRecord::test_step_record_creation",
@@ -23,7 +23,7 @@ class TestPytestRunnerTool:
         test_file=tmp_path/"test_failing.py"
         test_file.write_text("def test_will_fail():\n    assert 1 == 2\n")
 
-        tool=PytestRunnerTool()
+        tool=PytestRunnerTool(tmp_path,unsafe_local=True)
         result=tool._execute(
             PytestRunnerArgs(
                 target=str(test_file),
@@ -41,7 +41,7 @@ class TestPytestRunnerTool:
         test_file=tmp_path/"test_sleep.py"
         test_file.write_text("import time\ndef test_slow():\n    time.sleep(5)\n")
 
-        tool=PytestRunnerTool()
+        tool=PytestRunnerTool(tmp_path,unsafe_local=True)
         result=tool._execute(
             PytestRunnerArgs(target=str(test_file),timeout_seconds=0.5)
         )

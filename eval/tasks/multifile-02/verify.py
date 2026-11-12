@@ -1,7 +1,8 @@
 import sys
+
 try:
     from events.broker import Broker
-    from events.handlers import record_handler, received
+    from events.handlers import received, record_handler
     b = Broker()
     b.subscribe(record_handler)
     b.dispatch("mission_started")

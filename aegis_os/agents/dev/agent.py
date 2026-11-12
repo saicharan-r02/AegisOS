@@ -32,8 +32,16 @@ class AegisDev(BaseAgent):
     Requires workspace_root to scope filesystem operations safely.
     """
 
-    def __init__(self,workspace_root: Path,llm_provider: str | None = None,llm_model: str | None = None,max_steps: int = 20,state_machine: StateMachine | None = None):
-        registry=ToolRegistry()
+    def __init__(
+        self,
+        workspace_root: Path,
+        llm_provider: str | None = None,
+        llm_model: str | None = None,
+        max_steps: int = 20,
+        state_machine: StateMachine | None = None,
+        unsafe_local: bool = False
+    ):
+        registry = ToolRegistry()
         registry.register(ReadFileTool(workspace_root))
         registry.register(WriteFileTool(workspace_root))
         registry.register(ApplyPatchTool(workspace_root))
@@ -44,13 +52,12 @@ class AegisDev(BaseAgent):
         registry.register(ASTGrepTool())
         registry.register(FileOutlineTool(workspace_root))
         registry.register(FindReferencesTool(workspace_root))
-        registry.register(GitStatusTool())
-        registry.register(GitDiffTool())
-        registry.register(GitCommitTool())
-        registry.register(ExecuteCommandTool(workspace_root))
+        registry.register(GitStatusTool(workspace_root))
+        registry.register(GitDiffTool(workspace_root))
+        registry.register(GitCommitTool(workspace_root))
+        registry.register(ExecuteCommandTool(workspace_root, unsafe_local=unsafe_local))
 
         llm=get_llm(provider=llm_provider,model_name=llm_model,role=AgentRole.DEV,workspace_root=workspace_root)
-
         super().__init__(
             name="AegisDev",
             role=AgentRole.DEV,
@@ -58,6 +65,6 @@ class AegisDev(BaseAgent):
             tools=registry,
             system_prompt=SYSTEM_PROMPT,
             max_steps=max_steps,
-            state_machine=state_machine,
+            state_machine=state_machine
         )
         self.workspace_root=workspace_root

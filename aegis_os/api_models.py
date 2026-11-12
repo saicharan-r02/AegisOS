@@ -1,18 +1,16 @@
-"""API request and response models for AegisOS Mission Control."""
-
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
+
 from pydantic import BaseModel, Field
 
 from aegis_os.kernel.state import MissionStatus, StepRecord
-from aegis_os.tracing.models import MissionTrace, SpanRecord
 
 
 class MissionLaunchRequest(BaseModel):
     goal: str
     workspace: str = "."
-    provider: str | None = None
+    provider: Literal["nvidia"] = "nvidia"
     model: str | None = None
     max_repairs: int = 3
     strategy: str = "adaptive"

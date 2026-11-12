@@ -1,5 +1,6 @@
 import sys
 import types
+
 try:
     from pipeline import process_numbers
     res = process_numbers([1, 2, 3, 4, 5])

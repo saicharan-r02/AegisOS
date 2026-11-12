@@ -1,4 +1,5 @@
 import sys
+
 try:
     from accumulator import add_item
     b1 = add_item("apple")

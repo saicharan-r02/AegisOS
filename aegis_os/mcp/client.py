@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import importlib.metadata
 import json
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict
 
 from aegis_os.sandbox.policy import CommandPolicy, CommandTier
@@ -101,7 +103,11 @@ class PluginManager:
         loaded = 0
         try:
             eps = importlib.metadata.entry_points()
-            tool_eps = eps.select(group=cls.ENTRY_POINT_TOOLS) if hasattr(eps, "select") else eps.get(cls.ENTRY_POINT_TOOLS, [])
+            tool_eps = (
+                eps.select(group=cls.ENTRY_POINT_TOOLS)
+                if hasattr(eps, "select")
+                else eps.get(cls.ENTRY_POINT_TOOLS, [])
+            )
             for ep in tool_eps:
                 tool_cls = ep.load()
                 if isinstance(tool_cls, type) and issubclass(tool_cls, BaseAegisTool):
