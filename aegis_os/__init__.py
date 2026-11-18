@@ -1,4 +1,4 @@
-__version__ = "0.1.0"
+__version__ = "2.1.1"
 __author__ = "AegisOS Engineering"
 
 from aegis_os.kernel.state import MissionPhase, MissionSummary
