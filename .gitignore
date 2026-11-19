@@ -43,3 +43,7 @@ Thumbs.db
 
 # default folder where agents write project code
 workspace/
+
+# Agent-generated workspaces and raw traces
+workspaces/
+aegis_raw_debug.log
