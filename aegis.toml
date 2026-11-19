@@ -19,37 +19,40 @@ max_retries = 3
 retry_base_seconds = 1.0
 retry_max_seconds = 16.0
 circuit_cooldown_seconds = 30.0
-max_tokens = 320000
+max_tokens = 15000000
 max_cost_usd = 0
-max_wall_seconds = 1800.0
-max_completion_tokens = 4096
+max_wall_seconds = 7200.0
+max_completion_tokens = 2048
 
 
 [llm.roles.CTO]
 provider = "nvidia"
 model = "nvidia/nemotron-3-ultra-550b-a55b"
-context_tokens = 320000
-max_tool_output_tokens = 20000
+context_tokens = 48000
+max_tool_output_tokens = 1800
 fallback = [
   { provider = "nvidia", model = "nvidia/nemotron-3.5-lightning-30b-a3b" },
   { provider = "nvidia", model = "nvidia/nemotron-3.5-bolt-e4b" },
 ]
 
 [llm.roles.DEV]
+# Flagship model is used for all code writing — it reliably calls write_file and apply_patch.
+# laguna-xs-2.1 loops on reads without writing; it is now a last-resort fallback only.
 provider = "nvidia"
-model = "nvidia/nemotron-3.5-bolt-e4b"
-context_tokens = 320000
-max_tool_output_tokens = 20000
+model = "nvidia/nemotron-3-ultra-550b-a55b"
+context_tokens = 48000
+max_tool_output_tokens = 1800
 fallback = [
-  { provider = "nvidia", model = "poolside/laguna-xs-2.1" },
   { provider = "nvidia", model = "nvidia/nemotron-3.5-lightning-30b-a3b" },
+  { provider = "nvidia", model = "poolside/laguna-xs-2.1" },
+  { provider = "nvidia", model = "nvidia/nemotron-3.5-bolt-e4b" },
 ]
 
 [llm.roles.QA]
 provider = "nvidia"
 model = "nvidia/nemotron-3.5-lightning-30b-a3b"
-context_tokens = 320000
-max_tool_output_tokens = 15000
+context_tokens = 48000
+max_tool_output_tokens = 1800
 fallback = [
   { provider = "nvidia", model = "nvidia/nemotron-3.5-bolt-e4b" },
   { provider = "nvidia", model = "poolside/laguna-xs-2.1" },
@@ -58,8 +61,8 @@ fallback = [
 [llm.roles.SEC]
 provider = "nvidia"
 model = "nvidia/nemotron-3-ultra-550b-a55b"
-context_tokens = 320000
-max_tool_output_tokens = 15000
+context_tokens = 48000
+max_tool_output_tokens = 1800
 fallback = [
   { provider = "nvidia", model = "nvidia/nemotron-3.5-lightning-30b-a3b" },
   { provider = "nvidia", model = "nvidia/nemotron-3.5-bolt-e4b" },
@@ -68,8 +71,8 @@ fallback = [
 [llm.roles.OPS]
 provider = "nvidia"
 model = "nvidia/nemotron-3.5-bolt-e4b"
-context_tokens = 320000
-max_tool_output_tokens = 15000
+context_tokens = 48000
+max_tool_output_tokens = 1800
 fallback = [
   { provider = "nvidia", model = "poolside/laguna-xs-2.1" },
   { provider = "nvidia", model = "nvidia/nemotron-3.5-lightning-30b-a3b" },
@@ -78,8 +81,8 @@ fallback = [
 [llm.roles.REVIEWER]
 provider = "nvidia"
 model = "nvidia/nemotron-3.5-lightning-30b-a3b"
-context_tokens = 320000
-max_tool_output_tokens = 20000
+context_tokens = 48000
+max_tool_output_tokens = 1800
 fallback = [
   { provider = "nvidia", model = "nvidia/nemotron-3.5-bolt-e4b" },
   { provider = "nvidia", model = "poolside/laguna-xs-2.1" },
@@ -88,8 +91,8 @@ fallback = [
 [llm.roles.EXPLORER]
 provider = "nvidia"
 model = "nvidia/nemotron-3.5-bolt-e4b"
-context_tokens = 320000
-max_tool_output_tokens = 15000
+context_tokens = 48000
+max_tool_output_tokens = 1800
 fallback = [
   { provider = "nvidia", model = "poolside/laguna-xs-2.1" },
   { provider = "nvidia", model = "nvidia/nemotron-3-ultra-550b-a55b" },
@@ -98,8 +101,8 @@ fallback = [
 [llm.roles.SUMMARIZER]
 provider = "nvidia"
 model = "nvidia/nemotron-3.5-bolt-e4b"
-context_tokens = 320000
-max_tool_output_tokens = 10000
+context_tokens = 48000
+max_tool_output_tokens = 1800
 fallback = [
   { provider = "nvidia", model = "poolside/laguna-xs-2.1" },
   { provider = "nvidia", model = "nvidia/nemotron-3.5-lightning-30b-a3b" },
