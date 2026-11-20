@@ -28,6 +28,8 @@ class TestReport(BaseModel):
     passed: int = Field(default=0)
     failed: int = Field(default=0)
     errors: int = Field(default=0)
+    no_tests_collected: bool = False
+    acceptance_tests_generated: bool = False
     findings: list[TestFinding] = Field(default_factory=list)
     recommended_action: str | None = None
     raw_output: str | None = None
@@ -59,7 +61,7 @@ class AegisQA(BaseAgent):
 
         registry.register(ReadFileTool(workspace_root))
         registry.register(ListDirTool(workspace_root))
-        registry.register(ASTGrepTool())
+        registry.register(ASTGrepTool(workspace_root))
         registry.register(PytestRunnerTool(workspace_root, unsafe_local=unsafe_local))
         registry.register(WriteFileTool(tests_root))
 
@@ -79,6 +81,7 @@ class AegisQA(BaseAgent):
             state_machine=state_machine,
         )
         self.workspace_root = workspace_root
+        self.requires_tool_before_finish = True
 
     def run_and_report(self, target: str = "tests/") -> TestReport:
         """
@@ -89,14 +92,45 @@ class AegisQA(BaseAgent):
             A validated TestReport Pydantic model.
         """
         prompt = (
-            f"Please run the pytest test suite targeting '{target}', "
-            f"diagnose any failures, and produce a structured test report."
+            f"Run pytest ONCE for target '{target}'. Do not repeat an identical command. "
+            "If pytest collects zero tests, report NO_TESTS_COLLECTED immediately; do not "
+            "invent a passing result or rewrite production code. For ordinary failures, "
+            "report the shortest useful traceback and likely cause. Return JSON with "
+            "passed, failed, errors, no_tests_collected, findings, recommended_action."
         )
-        raw_output = self.run(prompt)
+        raw_output = self.run(prompt, max_iterations=5)
         return self._parse_report(raw_output)
 
+    def create_acceptance_tests(self, objective: str) -> str:
+        """Create focused tests under tests/ once when the repository has no tests."""
+        prompt = (
+            "The repository's test command collected zero tests. Create a small, meaningful "
+            "pytest acceptance test for the actual requested change. Objective: "
+            f"{objective}\n"
+            "Inspect only the most relevant changed file(s), then write test(s) under tests/ "
+            "using the registered write_file tool. Test observable behavior and edge cases; "
+            "do not use assert True, mocks that merely restate the implementation, or modify "
+            "production files. Prefer Python standard-library checks unless the repository "
+            "already has a test dependency for the target technology. Do not run pytest here. "
+            "Create at most two focused test files, then report exactly what was created."
+        )
+        records = self.run_task(prompt, max_iterations=4)
+        created = any(
+            record.tool_name == "write_file" and record.status.value == "SUCCESS"
+            for record in records
+        )
+        last_output = records[-1].tool_result.output if records and records[-1].tool_result else ""
+        marker = "ACCEPTANCE_TESTS_CREATED" if created else "ACCEPTANCE_TESTS_NOT_CREATED"
+        return f"{marker}\n{last_output}"[:1200]
+
     def _parse_report(self, raw: str) -> TestReport:
-        """Extract TestReport data from agent output, with safe fallback."""
+        """Extract TestReport data; never interpret a no-test run as success."""
+        if re.search(r"NO_TESTS_COLLECTED|no tests (?:were )?collected|no tests ran", raw, re.IGNORECASE):
+            return TestReport(
+                no_tests_collected=True,
+                recommended_action="Create focused acceptance tests once, then rerun pytest once.",
+                raw_output=raw,
+            )
         block_match = re.search(r"```json\s*(.*?)\s*```", raw, re.DOTALL)
         if block_match:
             try:
