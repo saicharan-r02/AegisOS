@@ -64,7 +64,7 @@ class AegisSec(BaseAgent):
         registry = ToolRegistry()
         registry.register(ReadFileTool(workspace_root))
         registry.register(ListDirTool(workspace_root))
-        registry.register(ASTGrepTool())
+        registry.register(ASTGrepTool(workspace_root))
 
         llm = get_llm(
             provider=llm_provider,
@@ -86,7 +86,7 @@ class AegisSec(BaseAgent):
             workspace_root, allow_network_scanners=allow_network_scanners
         )
 
-    def audit(self, target: str = "aegis_os/") -> SecurityReport:
+    def audit(self, target: str = ".") -> SecurityReport:
         """
         Audit the specified path and return a structured SecurityReport.
         Args:
@@ -107,7 +107,7 @@ class AegisSec(BaseAgent):
             "but do not remove or downgrade a scanner finding.\n"
             f"{scanner_evidence}"
         )
-        raw_output = self.run(prompt)
+        raw_output = self.run(prompt, max_iterations=5)
         report = self._parse_report(raw_output, target)
         report.scanner_runs = [run.model_dump() for run in scanner_report.runs]
 
