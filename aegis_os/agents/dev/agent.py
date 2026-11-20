@@ -49,7 +49,7 @@ class AegisDev(BaseAgent):
         registry.register(ListDirTool(workspace_root))
         registry.register(GrepSearchTool(workspace_root))
         registry.register(FindFilesTool(workspace_root))
-        registry.register(ASTGrepTool())
+        registry.register(ASTGrepTool(workspace_root))
         registry.register(FileOutlineTool(workspace_root))
         registry.register(FindReferencesTool(workspace_root))
         registry.register(GitStatusTool(workspace_root))
@@ -68,3 +68,4 @@ class AegisDev(BaseAgent):
             state_machine=state_machine
         )
         self.workspace_root=workspace_root
+        self.requires_tool_before_finish=True
