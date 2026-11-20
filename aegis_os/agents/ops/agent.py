@@ -71,4 +71,4 @@ class AegisOps(BaseAgent):
             "(3) git status is clean with no stray untracked changes. "
             "Produce a structured Operational Health Report."
         )
-        return self.run(prompt)
+        return self.run(prompt, max_iterations=4)
