@@ -4,6 +4,49 @@ All notable changes to AegisOS are documented in this file in accordance with [K
 
 ---
 
+## [2.1.2] - 2026-11-20 (PR Pilot Interface & Deterministic PR Runner)
+
+### Added
+- **PR Pilot Web UI & API (`aegis_os/pr_pilot.py`, `POST /api/pr-pilot/analyze`, `POST /api/pr-pilot/execute`, `GET /pr-pilot`)**: Replaced the root `/` dashboard with the interactive PR Pilot interface featuring a 3D orbit visualizer, 4-tab output (`Analysis`, `Solution`, `PR Guide`, `PR Text`), and deterministic clone/branch/patch/commit/PR execution.
+- **CLI Subcommand**: Added `aegis pr-pilot` for terminal-based issue analysis.
+
+### Fixed
+- **LLM JSON Parsing**: Overrode `max_tokens=8192`, routed through `ProviderRouter.complete()`, stripped `<think>` blocks/markdown fences, and added `ast.literal_eval` fallback.
+- **Windows Git Clones (`aegis_os/workspace/repo_manager.py`)**: Enabled `-c core.longpaths=true` and added read-only `.git` cleanup before fallback clones.
+- **Adaptive Supervisor Reliability (`aegis_os/orchestration/adaptive.py`, `aegis_os/agents/cto/agent.py`)**: Added no-tools JSON fallback for `AegisCTO`, raised per-task iteration cap, and fixed false-positive `"ERROR:"` substring failures.
+
+## [2.1.1] - 2026-11-15 (Mission Reliability & PR Pilot Patch)
+
+### Added
+- **PR Pilot Engine & UI**: Added automated GitHub issue-to-PR capability (`aegis_os/pr_pilot.py`), FastAPI solve endpoint (`/api/pr-pilot/solve`), and dedicated web interface (`aegis_os/static/pr-pilot.html` at `http://localhost:8000/pr-pilot`). Supports automated root-cause localization, surgical patch generation, verification, and interactive pull request guides.
+- **Workspace Test Auditing**: Added `aegis_os/verification/workspace_audit.py` to detect and block deleted test functions, weakened assertions, or test file removal during autonomous missions.
+- **Comprehensive Verification Suite**: Added `tests/unit/test_pr_pilot.py`, `tests/unit/test_agent_quality.py`, `tests/unit/test_api_real_missions.py`, `tests/unit/test_no_tool_nudge.py`, `tests/unit/test_repo_manager.py`, `tests/unit/test_reviewer_wiring.py`, and `tests/unit/test_workspace_audit.py`, expanding the unit test suite to **399 passing tests** (100% green).
+
+### Fixed
+- **Python 3.11 Compatibility**: Replaced Python 3.12-only `Path.walk()` with standard `os.walk()` in `aegis_os/intelligence/repo_map.py`, `aegis_os/intelligence/search.py`, and `aegis_os/orchestration/worktree.py`.
+- **Dynamic Plan Replanning**: Fixed `replan_failed_subgraph` in `aegis_os/orchestration/planner.py` to mark superseded tasks as `SKIPPED`, ensuring `is_all_completed()` evaluates correctly when replacement pivot tasks complete.
+- **LoopGuard Reflection Headroom**: Relaxed stagnation threshold in `aegis_os/agents/base_agent.py` from 2 repeated turns to 3 turns, allowing agent reflection and self-correction before triggering hard escalation.
+- **Tracer Span Ordering**: Fixed span query sorting in `aegis_os/tracing/tracer.py` to prioritize root spans (`ORDER BY (parent_span_id IS NOT NULL) ASC, started_at ASC`), ensuring deterministic parent-child hierarchy in trace telemetry.
+- **Workspace Change Recognition**: Added git status inspection in `aegis_os/orchestration/adaptive.py` to ensure tasks modifying workspace files are recognized as completed even if task iterations are exhausted.
+- Bounded agent prompt history and summarized pinned mission context to curb repeated-token growth.
+- Escalated duplicate tool calls earlier and disabled raw model-output logging by default.
+- Routed CTO plan-format retries through the normal step loop for accounting and telemetry.
+- Distinguished `NO_TESTS_COLLECTED` from a passing test run and added one bounded acceptance-test bootstrap attempt.
+- Prevented verification/finalization when planned implementation tasks remain incomplete.
+- Skipped the full Ops health-check agent for static/documentation-only diffs while retaining runtime/build/deployment checks when relevant.
+- Bounded security and operations agent call loops.
+- Reduced default mission, completion, role-context, tool-output, task-iteration, and wall-clock budgets.
+
+### Changed
+- Reworked developer, QA, and CTO instructions to be task-aware, avoid repetitive exploration, and use compact plans.
+- Updated `.env.example` with an NVIDIA NIM placeholder and ignored generated workspaces/debug traces.
+- Documented the agent operating model, mission example, known limitations, and validation status.
+
+### Security
+- Excluded local `.env`, Git metadata, databases, generated workspaces, and raw traces from the distributable source archive. Rotate any credential previously present in a shared archive or repository history.
+
+---
+
 ## [2.1.0] - 2026-11-12 (Stability & Hardening Release)
 
 ### Fixed
