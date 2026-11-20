@@ -34,6 +34,12 @@ htmlcov/
 
 # Logs
 *.log
+aegis_raw_debug.log
+
+# Backups & scratch
+*.bak
+*.bak*
+*.tmp
 
 # IDE & OS
 .vscode/
@@ -46,4 +52,3 @@ workspace/
 
 # Agent-generated workspaces and raw traces
 workspaces/
-aegis_raw_debug.log
