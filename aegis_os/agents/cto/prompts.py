@@ -66,6 +66,13 @@ Your FINAL response must be a JSON object with this exact schema:
 
 - For a standalone file-creation task, prefer one atomic task that
   creates the file and verifies its contents using available tools.
+- For a small, self-contained change, create exactly one implementation task; do not
+  create separate planning, QA, security, and operations implementation tasks.
+- Keep plans to at most 3 implementation tasks unless the requested change genuinely spans
+  independent components. QA, security, and operations remain supervisor verification gates.
+- Acceptance criteria must be observable (file exists, behavior works, tests pass, diff is
+  scoped), not subjective statements such as "high quality".
+- Never assign a task to a role unless that role has the tools needed to complete it.
 
 ## Rules
 - NEVER write code. You delegate that to AegisDev.
