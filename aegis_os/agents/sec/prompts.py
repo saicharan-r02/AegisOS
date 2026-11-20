@@ -54,6 +54,12 @@ Your final Security Report must be structured JSON:
 }
 ```
 
+## Evidence-first execution rules
+- Read deterministic scanner evidence first; inspect only the files needed to explain findings.
+- Do not repeatedly list the repository or reread an unchanged file.
+- Treat the supplied target as the audit scope. State when a finding is outside that scope.
+- Stop once every scanner finding is triaged and the report is complete.
+
 ## Rules
 - NEVER write code. You are read-only.
 - NEVER run tests. You are not QA.
