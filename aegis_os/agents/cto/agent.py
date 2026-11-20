@@ -2,7 +2,6 @@ import json
 import re
 from pathlib import Path
 
-from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
 from aegis_os.agents.base_agent import BaseAgent, _first_json
@@ -51,7 +50,7 @@ class AegisCTO(BaseAgent):
     ):
         ws_root=Path(workspace_root) if workspace_root else Path.cwd()
         registry=ToolRegistry()
-        registry.register(ASTGrepTool())
+        registry.register(ASTGrepTool(ws_root))
         registry.register(FileOutlineTool(ws_root))
         registry.register(FindReferencesTool(ws_root))
         registry.register(GitStatusTool(ws_root))
@@ -72,10 +71,11 @@ class AegisCTO(BaseAgent):
         """
         prompt = (
             "Please analyze the following engineering goal and produce a structured "
+            "Keep the plan compact (1-2 tasks max for focused bug fixes; combine code fix and test update into one task when in the same repo). "
             "MissionPlan JSON as specified in your system prompt.\n\n"
             f"## Goal\n{goal}"
         )
-        raw_output=self.run(prompt)
+        raw_output=self.run(prompt, max_iterations=8)
         try:
             return self._parse_mission_plan(raw_output)
         except ValueError:
@@ -88,20 +88,39 @@ class AegisCTO(BaseAgent):
             "priority, acceptance_criteria. NO other text.\n\n"
             f"Goal: {goal}"
         )
-        reply=self.llm.invoke([SystemMessage(content=self.system_prompt),HumanMessage(content=followup)])
+        reply_text=self.run(followup, max_iterations=2)
         try:
-            return self._parse_mission_plan(self._reply_text(reply))
+            return self._parse_mission_plan(reply_text)
         except ValueError:
             pass
         minimal_prompt=(
-            f"Output ONLY valid JSON for goal '{goal}'. No reasoning, no markdown. Start with {{:\n"
-            '{"mission_title":"Calculator","objective":"Build calculator","tasks":['
-            '{"task_id":"T001","title":"Implement","description":"Write calculator.py",'
-            '"assigned_to":"AegisDev","depends_on":[],"priority":"HIGH","acceptance_criteria":["passes tests"]}],'
-            '"risk_flags":["division by zero"]}'
+            f"Output ONLY valid JSON for this goal. No reasoning, no markdown. Start with {{.\n"
+            f"Goal: {goal}\n"
+            "Schema: " + json.dumps({
+                "mission_title": "<short title for THIS goal>",
+                "objective": "<one sentence>",
+                "tasks": [{
+                    "task_id": "T001",
+                    "title": "<task title>",
+                    "description": "<what to do>",
+                    "assigned_to": "AegisDev",
+                    "depends_on": [],
+                    "priority": "HIGH",
+                    "acceptance_criteria": ["<verifiable condition>"],
+                }],
+                "risk_flags": [],
+            })
         )
-        reply=self.llm.invoke([HumanMessage(content=minimal_prompt)])
-        return self._parse_mission_plan(self._reply_text(reply))
+        reply_text=self.run(minimal_prompt, max_iterations=2)
+        try:
+            return self._parse_mission_plan(reply_text)
+        except ValueError:
+            from langchain_core.messages import HumanMessage, SystemMessage
+            res = self.llm.complete([
+                SystemMessage(content=self.system_prompt),
+                HumanMessage(content=minimal_prompt),
+            ])
+            return self._parse_mission_plan(self._reply_text(res.message))
 
     @staticmethod
     def _reply_text(response) -> str:
