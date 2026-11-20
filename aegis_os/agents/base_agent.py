@@ -1,4 +1,5 @@
 import json
+import os
 import re
 import tempfile
 import uuid
@@ -66,6 +67,10 @@ class AgentIntent(BaseModel):
     action_input: dict[str, Any] = Field(default_factory=dict, description="Arguments for the tool.")
     final_answer: str | None = Field(default=None, description="Conclusion if the task is complete.")
     parse_error: str | None = Field(default=None, description="Parsing error message if output was malformed.")
+    conversational: bool = Field(
+        default=False,
+        description="True when the model replied with prose and no JSON/tool call (not an explicit completion).",
+    )
 
     @property
     def is_finished(self) -> bool:
@@ -128,13 +133,77 @@ def parse_agent_response(content: str) -> AgentIntent:
     except (json.JSONDecodeError, ValueError):
         pass
 
-    return AgentIntent(thought="Direct conversational response.", final_answer=text)
+    return AgentIntent(thought="Direct conversational response.", final_answer=text, conversational=True)
+
+NO_TOOL_NUDGE = (
+    "[ACTION REQUIRED] Your last reply was plain text/code in the message body, so NOTHING was executed "
+    "and no file was changed. You can only act by calling a tool (for example write_file with `path` and "
+    "`content`, then run the tests). Do not paste code or describe tool calls in prose. "
+    "Call the appropriate tool now."
+)
+MAX_NO_TOOL_NUDGES = 2
+HISTORY_WINDOW = 4
+NO_CHANGE_MARKER = "[NO_CHANGE]"
+_WRITE_TOOLS = frozenset({"write_file", "replace_in_file", "apply_patch"})
+
+
+def _summarize_tool_args(tool_args: dict[str, Any] | None, limit: int = 240) -> str:
+    """Compact, prompt-safe description of what a tool call did (never echoes whole file bodies)."""
+    if not tool_args:
+        return ""
+    parts: list[str] = []
+    for name, args in tool_args.items():
+        if not isinstance(args, dict):
+            parts.append(f"{name}({str(args)[:80]})")
+            continue
+        shown: list[str] = []
+        for key, value in args.items():
+            if isinstance(value, str) and len(value) > 80:
+                shown.append(f"{key}=<{len(value)} chars>")
+            else:
+                shown.append(f"{key}={json.dumps(value, ensure_ascii=False, default=str)[:80]}")
+        parts.append(f"{name}({', '.join(shown)})")
+    return "; ".join(parts)[:limit]
+
+
+def _progress_summary(history: list[StepRecord]) -> list[str]:
+    """What the mission has ALREADY done, so agents stop redoing finished work."""
+    written: dict[str, int] = {}
+    last_tests: str | None = None
+    for step in history:
+        if step.status != StepStatus.SUCCESS or not step.tool_args:
+            continue
+        for name, args in step.tool_args.items():
+            if name in _WRITE_TOOLS and isinstance(args, dict) and args.get("path"):
+                written[str(args["path"])] = written.get(str(args["path"]), 0) + 1
+            if name == "run_pytest" and step.tool_result and step.tool_result.output:
+                last_tests = f"step {step.step_index}: {step.tool_result.output.strip().splitlines()[-1][:120]}"
+    lines: list[str] = []
+    if written:
+        files = ", ".join(f"{path} (written {n}x)" if n > 1 else path for path, n in written.items())
+        lines.append(f"Files already created/modified in this mission: {files}")
+    if last_tests:
+        lines.append(f"Most recent test run -> {last_tests}")
+    return lines
+
+
+def _first_tool_error(output: str) -> str:
+    """Surface the real failure text instead of a generic message."""
+    for line in output.splitlines():
+        if "ERROR:" in line or "deferred" in line:
+            return line.strip()[:300]
+    return "Tool call failed."
+
 
 class BaseAgent:
     """
     Abstract base class for all specialized AegisOS autonomous agents.
     Executes a bounded ReAct cycle under the supervision of a StateMachine.
+
+    Roles that must change the world (Dev, QA) set `requires_tool_before_finish=True`: a prose-only
+    reply is then NOT accepted as task completion until at least one tool call has succeeded.
     """
+    requires_tool_before_finish: bool = False
     def __init__(
         self,
         name: str,
@@ -150,6 +219,9 @@ class BaseAgent:
         self.role = role
         self.system_prompt = system_prompt
         self.llm = llm
+        self._run_tool_successes = 0
+        self._run_nudges = 0
+        self._last_run_completed = False
         if state_machine is None:
             state = AgentState(
                 session_id=str(uuid.uuid4()),
@@ -195,7 +267,10 @@ class BaseAgent:
         if native_tools:
             response_format=(
                 "Use the structured tool interface for tool calls. If the task is complete, "
-                "respond with a concise final answer. Do not invent tool names or arguments."
+                "respond with a concise final answer. Do not invent tool names or arguments. "
+                "Never repeat a tool call that already succeeded: check 'Already done' in the history "
+                "first. When every deliverable for this task exists, stop calling tools and give your "
+                "final answer in one or two sentences."
             )
         else:
             response_format=(
@@ -213,7 +288,7 @@ class BaseAgent:
             f"### Response Format:\n{response_format}"
         )
         messages: list[BaseMessage]=[SystemMessage(content=system_instruction)]
-        recent_steps=self.state_machine.state.step_history[-5:]
+        recent_steps=self.state_machine.state.step_history[-HISTORY_WINDOW:]
         if recent_steps:
             history_lines=["### Recent Execution History:"]
             for step in recent_steps:
@@ -224,16 +299,37 @@ class BaseAgent:
                     else ""
                 )
                 error_snippet=f"\n    Error: {_untrusted_block(step.error)}" if step.error else ""
+                args_note=_summarize_tool_args(step.tool_args)
+                args_snippet=f"\n    Args: {args_note}" if args_note else ""
                 history_lines.append(
-                    f"- Step {step.step_index} [{step.role.value}]: {step.task_description}{tool_info}{output_snippet}{error_snippet}"
+                    f"- Step {step.step_index} [{step.role.value}]: {step.task_description}{tool_info}{args_snippet}{output_snippet}{error_snippet}"
                 )
+            progress=_progress_summary(self.state_machine.state.step_history)
+            if progress:
+                history_lines.append("### Already done:")
+                history_lines.extend(f"- {line}" for line in progress)
             messages.append(HumanMessage(content="\n".join(history_lines)))
 
         messages.append(HumanMessage(content=f"Current Objective:\n{task}"))
         pinned_values: dict[str,Any]={"goal":self.state_machine.state.mission_goal}
-        for key in ("mission_plan","acceptance_criteria","failure_ledger","pinned_context"):
-            if key in self.state_machine.state.context_variables:
-                pinned_values[key]=self.state_machine.state.context_variables[key]
+        context_vars = self.state_machine.state.context_variables
+        if isinstance(context_vars.get("mission_plan"), dict):
+            plan = context_vars["mission_plan"]
+            tasks = plan.get("tasks", [])
+            pinned_values["mission_plan"] = {
+                "mission_title": plan.get("mission_title"),
+                "objective": plan.get("objective"),
+                "tasks": [
+                    {k: item.get(k) for k in ("task_id", "title", "assigned_to", "depends_on") if k in item}
+                    for item in tasks[:6] if isinstance(item, dict)
+                ],
+            }
+        if "acceptance_criteria" in context_vars:
+            pinned_values["acceptance_criteria"] = context_vars["acceptance_criteria"]
+        if isinstance(context_vars.get("failure_ledger"), list):
+            pinned_values["failure_ledger"] = context_vars["failure_ledger"][-3:]
+        if "pinned_context" in context_vars:
+            pinned_values["pinned_context"] = str(context_vars["pinned_context"])[:2500]
         pinned_context=redact_sensitive_text(json.dumps(pinned_values,ensure_ascii=False,default=str))
         return self.context_manager.compact(messages,self.role.value,pinned_context)
 
@@ -319,8 +415,13 @@ class BaseAgent:
             elif result.success:
                 output_parts.append(f"{name}: {result.output}")
             else:
-                succeeded=False
-                output_parts.append(f"{name}: ERROR: {result.error}")
+                succeeded = False
+                failure_line = f"{name}: ERROR: {result.error}"
+                detail = (result.output or "").strip()
+                if detail and detail not in str(result.error):
+                    # e.g. syntax diagnostics with the exact line number - the model needs these to fix its code
+                    failure_line += "\n" + detail[:4000]
+                output_parts.append(failure_line)
             if result is not None:
                 self._record_policy_decision(result)
         args_summary={name:args for name,args,_ in validated}
@@ -454,20 +555,44 @@ class BaseAgent:
                 ==step_record.step_id
             )
             return self.state_machine.end_step(
-                tool_result=ToolResult(success=succeeded,output=result_text,error=None if succeeded else "One or more tool calls failed or were deferred."),
+                tool_result=ToolResult(success=succeeded,output=result_text,error=None if succeeded else _first_tool_error(output)),
                 status=StepStatus.APPROVAL_REQUIRED if approval_required else None,
             )
 
         content=response.content if isinstance(response,AIMessage) else str(response)
         if not isinstance(content,str):
             content="\n".join(str(part.get("text","")) for part in content if isinstance(part,dict))
-        Path("aegis_raw_debug.log").open("a", encoding="utf-8").write(f"--- {self.role.value} ---\n{content!r}\ncalls={calls!r}\n")
+        # Raw prompts/responses can contain proprietary source code or secrets. Debug
+        # logging is opt-in and redacted; normal telemetry should use structured events.
+        if os.getenv("AEGIS_DEBUG_RAW_MODEL_OUTPUT") == "1":
+            safe_content = redact_sensitive_text(str(content))
+            safe_calls = redact_sensitive_value(calls)
+            with Path("aegis_raw_debug.log").open("a", encoding="utf-8") as debug_log:
+                debug_log.write(f"--- {self.role.value} ---\n{safe_content!r}\ncalls={safe_calls!r}\n")
         intent=parse_agent_response(str(content))
 
         if intent.parse_error:
             return self.state_machine.end_step(error=redact_sensitive_text(f"Output parsing error: {intent.parse_error}. Please output valid JSON."))
 
         if intent.is_finished and not intent.action:
+            if (
+                self.requires_tool_before_finish
+                and intent.conversational
+                and self._run_tool_successes==0
+            ):
+                step_record.task_description="Model replied with text instead of calling a tool"
+                if self._run_nudges<MAX_NO_TOOL_NUDGES:
+                    self._run_nudges+=1
+                    step_record.metadata["needs_tool_nudge"]=True
+                    return self.state_machine.end_step(
+                        error="Reply contained no tool call, so no action was taken."
+                    )
+                return self.state_machine.end_step(
+                    error=(
+                        f"{self.name} never called a tool after {MAX_NO_TOOL_NUDGES} reminders; "
+                        "refusing to report this task as complete."
+                    )
+                )
             step_record.task_description=intent.thought or "Final task completion"
             result=ToolResult.ok(output=intent.final_answer or "Task concluded.")
             return self.state_machine.end_step(tool_result=result)
@@ -503,8 +628,11 @@ class BaseAgent:
         Detects tool-repetition stagnation and injects corrective guidance.
         """
         records: list[StepRecord] = []
-        guard=LoopGuard()
+        self._last_run_completed = False
+        guard=LoopGuard(repeat_limit=3, escalation_after=3)
         reflection: str | None=None
+        self._run_tool_successes=0
+        self._run_nudges=0
 
         for _ in range(max_iterations):
             if self.state_machine.state.is_terminal:
@@ -520,13 +648,29 @@ class BaseAgent:
             if record.status==StepStatus.APPROVAL_REQUIRED:
                 break
 
+            # A zero-test result is a terminal observation for this QA attempt.
+            # Repeating pytest with the same empty test layout cannot create evidence.
+            if (
+                record.tool_result
+                and "NO_TESTS_COLLECTED" in (record.tool_result.output or "")
+            ):
+                break
+
+            if record.metadata.get("needs_tool_nudge"):
+                reflection=NO_TOOL_NUDGE
+                continue
+            if record.tool_name and record.status.value=="SUCCESS":
+                self._run_tool_successes+=1
             if record.tool_name is None and record.status.value == "SUCCESS":
+                self._last_run_completed = True
                 break
 
             signal=guard.observe(
                 record.tool_name,
                 record.tool_args,
-                made_progress=record.status.value=="SUCCESS",
+                made_progress=record.status.value=="SUCCESS" and NO_CHANGE_MARKER not in (
+                    record.tool_result.output if record.tool_result and record.tool_result.output else ""
+                ),
             )
             if signal:
                 reflection=(
