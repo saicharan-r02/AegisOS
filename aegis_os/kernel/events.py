@@ -78,6 +78,15 @@ class LLMTokenEvent(KernelEvent):
     kind: str
     content: str = ""
 
+
+class PROpenedEvent(KernelEvent):
+    """Fired when an autonomous Pull Request is created on GitHub."""
+    event_type: str = "pr.opened"
+    pr_url: str
+    branch: str
+    owner: str = ""
+    repo: str = ""
+
 EventHandler = Callable[[KernelEvent], None] | Callable[[KernelEvent], Coroutine[Any, Any, None]]
 
 def _resolve_event_key(event_type: type[KernelEvent] | str) -> str:
