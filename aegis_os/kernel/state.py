@@ -122,7 +122,7 @@ class AgentState(BaseModel):
     started_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     consecutive_failures: int = Field(default=0, ge=0, description="Consecutive failed steps.")
     stagnation_threshold: int = Field(
-        default=3, ge=1, description="Max consecutive failures before halt."
+        default=5, ge=1, description="Max consecutive failures before halt."
     )
 
     @property
