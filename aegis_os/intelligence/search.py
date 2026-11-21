@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -99,10 +100,11 @@ class CodeSearchEngine:
         new_files_mtime: dict[str, float] = {}
         changed = False
 
-        for root, dirs, files in Path(self.workspace_root).walk():
+        for root, dirs, files in os.walk(str(self.workspace_root)):
+            root_path = Path(root)
             dirs[:] = [d for d in dirs if d not in self._IGNORED_DIRS and not d.startswith(".")]
             for fname in files:
-                fpath = root / fname
+                fpath = root_path / fname
                 if fpath.suffix.lower() not in self._INDEXABLE_EXTENSIONS:
                     continue
 
@@ -236,10 +238,11 @@ class CodeSearchEngine:
         results: list[dict[str, Any]] = []
         clean_filter = path_filter.replace("\\", "/").lower() if path_filter else None
 
-        for root, dirs, files in Path(self.workspace_root).walk():
+        for root, dirs, files in os.walk(str(self.workspace_root)):
+            root_path = Path(root)
             dirs[:] = [d for d in dirs if d not in self._IGNORED_DIRS and not d.startswith(".")]
             for fname in files:
-                fpath = root / fname
+                fpath = root_path / fname
                 if fpath.suffix.lower() not in self._INDEXABLE_EXTENSIONS:
                     continue
                 try:
