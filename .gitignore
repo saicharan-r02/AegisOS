@@ -48,7 +48,14 @@ aegis_raw_debug.log
 Thumbs.db
 
 # default folder where agents write project code
-workspace/
+/workspace/
 
 # Agent-generated workspaces and raw traces
-workspaces/
+/workspaces/
+
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+node_modules/
+
+!eval/tasks/*/fixture/.env

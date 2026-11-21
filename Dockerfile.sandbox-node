@@ -1,7 +1,0 @@
-FROM node:20-slim
-
-RUN groupadd --gid 1000 aegis \
-    && useradd --uid 1000 --gid aegis --create-home aegis
-
-WORKDIR /workspace
-USER 1000:1000
