@@ -26,7 +26,7 @@ python_classes=["Test*"]
 python_functions=["test_*"]
 log_cli=true
 log_cli_level="INFO"
-addopts = "-v --tb=short -p no:hypothesispytest --ignore=tests/property --ignore=tests/unit/test_path_guard_properties.py"
+addopts = "-v --tb=short"
 
 [tool.ruff]
 line-length=100
