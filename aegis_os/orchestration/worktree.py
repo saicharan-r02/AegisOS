@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -93,9 +94,10 @@ class WorktreeManager:
             return False, f"Merge conflict on branch {branch_name}: {proc.stderr}"
 
         # Fallback for non-git directory: copy modified files back
-        for root, _, files in worktree_path.walk():
+        for root, _, files in os.walk(str(worktree_path)):
+            root_path = Path(root)
             for fname in files:
-                src_file = root / fname
+                src_file = root_path / fname
                 rel_path = src_file.relative_to(worktree_path)
                 dest_file = self.workspace_root / rel_path
                 dest_file.parent.mkdir(parents=True, exist_ok=True)
