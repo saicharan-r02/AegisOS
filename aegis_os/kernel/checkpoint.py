@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
@@ -185,10 +186,57 @@ class CheckpointStore:
 
     def list_missions(self) -> list[dict[str, Any]]:
         """Return all tracked missions for audit and dashboard view."""
-        cursor = self._conn.execute(
-            "SELECT session_id, goal, status, current_step_index, created_at, updated_at FROM missions ORDER BY updated_at DESC"
-        )
+        try:
+            cursor = self._conn.execute(
+                "SELECT session_id, goal, status, current_step_index, created_at, updated_at, "
+                "COALESCE(json_extract(state_json, '$.tokens_used'), 0) AS tokens_used, "
+                "COALESCE(json_extract(state_json, '$.max_tokens'), 0) AS max_tokens, "
+                "json_extract(state_json, '$.context_variables.workspace_root') AS workspace, "
+                "json_extract(state_json, '$.context_variables.target_repo') AS repo_url, "
+                "json_extract(state_json, '$.context_variables.strategy') AS strategy, "
+                "json_extract(state_json, '$.context_variables.provider') AS provider, "
+                "json_extract(state_json, '$.context_variables.pr_url') AS pr_url, "
+                "json_extract(state_json, '$.context_variables.issue_url') AS issue_url "
+                "FROM missions ORDER BY updated_at DESC"
+            )
+        except sqlite3.OperationalError:  # SQLite built without JSON support
+            cursor = self._conn.execute(
+                "SELECT session_id, goal, status, current_step_index, created_at, updated_at "
+                "FROM missions ORDER BY updated_at DESC"
+            )
         return [dict(row) for row in cursor.fetchall()]
+
+    def get_stats(self) -> dict[str, Any]:
+        """Real aggregate numbers for the dashboard (never estimated or hardcoded)."""
+        by_status = {
+            str(row["status"]): int(row["n"])
+            for row in self._conn.execute("SELECT status, COUNT(*) AS n FROM missions GROUP BY status")
+        }
+        total_steps = int(self._conn.execute("SELECT COUNT(*) FROM steps").fetchone()[0])
+        tokens = 0
+        cost = 0.0
+        for row in self._conn.execute("SELECT state_json FROM missions"):
+            try:
+                data = json.loads(row["state_json"])
+            except (TypeError, ValueError):
+                continue
+            tokens += int(data.get("tokens_used") or 0)
+            cost += float(data.get("cost_used_usd") or 0.0)
+        completed = by_status.get("COMPLETED", 0)
+        finished = completed + by_status.get("FAILED", 0) + by_status.get("ABORTED", 0)
+        return {
+            "total": sum(by_status.values()),
+            "completed": completed,
+            "failed": by_status.get("FAILED", 0),
+            "aborted": by_status.get("ABORTED", 0),
+            "running": by_status.get("RUNNING", 0),
+            "paused": by_status.get("PAUSED", 0),
+            "pending": by_status.get("PENDING", 0),
+            "total_steps": total_steps,
+            "total_tokens": tokens,
+            "total_cost_usd": round(cost, 6),
+            "success_rate": (completed / finished) if finished else None,
+        }
 
     def list_steps(self, session_id: str) -> list[StepRecord]:
         """Return the complete step history for a session ordered by step_index."""
