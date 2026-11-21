@@ -1,4 +1,4 @@
-# Security Policy & Threat Model — AegisOS v2.0
+# Security Policy & Threat Model — AegisOS v2.1.1
 
 AegisOS is engineered on the principle of **deterministic in-code security isolation**. Autonomous software engineering agents must never be trusted with unconstrained host shell access, unverified file operations, or raw LLM instructions that can be coerced via prompt injection.
 
@@ -39,11 +39,16 @@ AegisOS is engineered on the principle of **deterministic in-code security isola
 - **Defense**:
   - **TestIntegrityGuard**: Compares AST syntax trees before and after changes. Missions fail automatically if test functions are deleted, assertion counts drop, or skip markers are injected.
 
+### 1.6 API Access Control & Container Trust
+- **API Authentication**: API auth is opt-in via `AEGIS_API_TOKEN` (`X-Aegis-Token` header; the code also accepts a `?token=` query parameter, which can leak into logs); `/api/events` WebSocket, `/docs`, and static pages are exempt.
+- **Network & Rate Limiting**: In-memory rate limiting is applied per client IP; default server bind is `127.0.0.1`. Do not expose the server publicly without a token and a reverse proxy.
+- **Docker Mount Security**: Note that `docker-compose.yml` mounts `/var/run/docker.sock` and the project folder (host-level Docker access): run only on trusted local machines.
+
 ---
 
 ## 2. Responsible Disclosure
 
 If you identify a security vulnerability in AegisOS, please report it responsibly:
-- **Email**: `security@aegis-os.org` or open a confidential GitHub Security Advisory.
+- **Confidential Reporting**: Open a private advisory at [GitHub Security Advisories](https://github.com/saicharan-r02/AegisOS/security/advisories/new).
 - Please include reproduction steps, environment details, and affected components.
 - Do not publicly disclose vulnerabilities until a patch has been published.
