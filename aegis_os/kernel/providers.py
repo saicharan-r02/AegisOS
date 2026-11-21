@@ -176,8 +176,14 @@ class LangChainProvider:
             response = AIMessage(content=str(getattr(response, "content", response)))
 
         input_tokens, output_tokens = response_usage(response)
-        input_tokens = input_tokens if input_tokens is not None else self.count_tokens(messages)
-        output_tokens = output_tokens if output_tokens is not None else estimate_tokens(str(response.content))
+        if input_tokens is None:
+            input_tokens = self.count_tokens(messages)
+            if tools:  # tool schemas are sent with every request and cost real tokens
+                input_tokens += estimate_tokens(json.dumps(list(tools), default=str))
+        if output_tokens is None:
+            # A tool call has an empty text body but its arguments are still generated tokens.
+            produced = str(response.content) + json.dumps(list(response.tool_calls or []), default=str)
+            output_tokens = estimate_tokens(produced)
         latency_ms = (time.perf_counter() - started) * 1000.0
         cost = None
         if self.pricing.input_per_million is not None and self.pricing.output_per_million is not None:
