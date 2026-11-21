@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -17,6 +18,7 @@ from aegis_os.kernel.events import (
 from aegis_os.kernel.exceptions import (
     InvalidTransitionError,
     MaxStepsExceededError,
+    MissionAbortedError,
     StagnationError,
 )
 from aegis_os.kernel.state import (
@@ -57,8 +59,16 @@ class StateMachine:
         self.state = state
         self.checkpoint_store = checkpoint_store
         self.event_bus = event_bus
+        # Optional operator hook: returns "RUNNING" | "PAUSED" | "CANCELLED" (checked before every step).
+        self.control_callback: Callable[[], str | None] | None = None
+        self.max_pause_seconds: float = 3600.0
 
     def start_mission(self) -> None:
+        if self.state.status == MissionStatus.RUNNING:
+            return
+        if self.state.status == MissionStatus.PAUSED:
+            self.resume_mission()
+            return
         if self.state.status != MissionStatus.PENDING:
             raise InvalidTransitionError(
                 from_state=self.state.status.value,
@@ -110,6 +120,7 @@ class StateMachine:
         Allocate and initiate a new step in the mission.
         Enforces execution budgets and stagnation limits before proceeding.
         """
+        self._honour_control_signal()
         if self.state.is_terminal:
             raise InvalidTransitionError(
                 from_state=self.state.status.value,
@@ -141,6 +152,32 @@ class StateMachine:
         self._emit(StepStartedEvent(session_id=self.state.session_id, step=step))
         self._persist()
         return step
+
+    def _honour_control_signal(self) -> None:
+        """Cooperatively pause or cancel when the operator asks (Pause/Resume/Cancel buttons)."""
+        if self.control_callback is None:
+            return
+        paused_since: float | None = None
+        while True:
+            signal = str(self.control_callback() or "RUNNING").upper()
+            if signal in {"CANCELLED", "ABORTED"}:
+                if not self.state.is_terminal:
+                    self.abort_mission("Cancelled by operator.")
+                raise MissionAbortedError("Mission cancelled by operator.")
+            if signal == "PAUSED" and not self.state.is_terminal:
+                now = time.monotonic()
+                if paused_since is None:
+                    paused_since = now
+                    if self.state.status == MissionStatus.RUNNING:
+                        self.pause_mission()
+                elif now - paused_since > self.max_pause_seconds:
+                    self.abort_mission("Pause timed out.")
+                    raise MissionAbortedError("Mission pause timed out.")
+                time.sleep(0.25)
+                continue
+            if self.state.status == MissionStatus.PAUSED:
+                self.resume_mission()
+            return
 
     def end_step(
         self,
