@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+import subprocess
 import time
 import uuid
 from pathlib import Path
@@ -21,6 +23,11 @@ from aegis_os.orchestration.invariants import HardInvariantEngine
 from aegis_os.orchestration.ledger import FailureLedger
 from aegis_os.orchestration.planner import DynamicPlan, PlanTask, TaskStatus
 from aegis_os.orchestration.worktree import WorktreeManager
+from aegis_os.verification.workspace_audit import (
+    audit_test_changes,
+    collect_diff,
+    current_commit,
+)
 
 if TYPE_CHECKING:
     from aegis_os.agents.cto.agent import AegisCTO
@@ -28,6 +35,35 @@ if TYPE_CHECKING:
     from aegis_os.agents.ops.agent import AegisOps
     from aegis_os.agents.qa.agent import AegisQA, TestReport
     from aegis_os.agents.sec.agent import AegisSec, SecurityReport
+    from aegis_os.verification.reviewer import AegisReviewer
+
+
+def _requires_ops_validation(root: Path, base_commit: str | None) -> bool:
+    """Run operations checks only when a mission diff can affect runtime/build/deployment."""
+    if not base_commit:
+        return True
+    diff = collect_diff(root, base_commit, max_chars=60_000)
+    changed = re.findall(r"^diff --git a/(.*?) b/", diff, flags=re.MULTILINE)
+    paths = [path.replace("\\", "/") for path in changed if not path.startswith("tests/")]
+    if not paths:
+        return False
+    operational_files = {
+        "pyproject.toml", "requirements.txt", "requirements-dev.txt", "poetry.lock",
+        "uv.lock", "Pipfile", "Pipfile.lock", "package.json", "package-lock.json",
+        "pnpm-lock.yaml", "yarn.lock", "bun.lockb", "bun.lock", "tsconfig.json",
+        "vite.config.ts", "next.config.js", "next.config.ts", "Dockerfile",
+        "docker-compose.yml", "compose.yaml", "compose.yml", "Makefile",
+        "Cargo.toml", "Cargo.lock", "go.mod", "go.sum", "pom.xml", "build.gradle",
+    }
+    runtime_extensions = {".py", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".go", ".rs", ".java", ".cs", ".rb", ".php", ".sh"}
+    for value in paths:
+        name = value.split("/")[-1]
+        suffix = Path(name).suffix.lower()
+        if name in operational_files or suffix in runtime_extensions:
+            return True
+        if value.startswith((".github/workflows/", "infra/", "deploy/", "terraform/", "k8s/")):
+            return True
+    return False
 
 
 def _resolve_role(role_str: str) -> AgentRole:
@@ -54,7 +90,7 @@ class AdaptiveOrchestrator:
         state_machine: StateMachine | None = None,
         checkpoint_store: CheckpointStore | None = None,
         event_bus: EventBus | None = None,
-        max_repair_cycles: int = 3,
+        max_repair_cycles: int = 2,
         max_steps: int = 50,
         max_tokens: int | None = None,
         max_cost_usd: float | None = None,
@@ -65,6 +101,7 @@ class AdaptiveOrchestrator:
         qa: AegisQA | None = None,
         sec: AegisSec | None = None,
         ops: AegisOps | None = None,
+        reviewer: AegisReviewer | None = None,
     ) -> None:
         self.workspace_root = Path(workspace_root) if workspace_root else Path.cwd()
         self.llm_provider = llm_provider
@@ -93,6 +130,7 @@ class AdaptiveOrchestrator:
         self.qa = qa
         self.sec = sec
         self.ops = ops
+        self.reviewer = reviewer
 
         self.ledger = FailureLedger()
         self.worktree_mgr = WorktreeManager(self.workspace_root)
@@ -157,6 +195,56 @@ class AdaptiveOrchestrator:
             return self.ops
         return self.dev
 
+    def _review_changes(
+        self,
+        goal: str,
+        base_commit: str | None,
+        qa_report: Any,
+        sec_report: Any,
+    ) -> tuple[bool, str | None, bool]:
+        """Run the independent reviewer on everything changed since the mission began.
+
+        Returns ``(approved, details_for_repair_prompt, fatal)``. ``fatal`` means the reviewer
+        could not produce a verdict at all (so Dev cannot "repair" it) and the mission must stop.
+        """
+        assert self.state_machine is not None
+        context = self.state_machine.state.context_variables
+        if not base_commit:
+            context["review"] = {"skipped": True, "reason": "workspace has no git base commit"}
+            return True, None, False
+
+        diff = redact_sensitive_text(collect_diff(self.workspace_root, base_commit))
+        try:
+            if self.reviewer is None:
+                from aegis_os.verification.reviewer import AegisReviewer
+
+                self.reviewer = AegisReviewer(
+                    workspace_root=self.workspace_root,
+                    llm_provider=self.llm_provider,
+                    llm_model=self.llm_model,
+                )
+            report = self.reviewer.review(
+                objective=goal, git_diff=diff, qa_report=qa_report, sec_report=sec_report
+            )
+        except Exception as exc:  # reviewer could not even start: fail closed
+            message = redact_sensitive_text(f"Reviewer unavailable: {type(exc).__name__}: {exc}")
+            context["review"] = {"approved": False, "verdict_failed": True, "summary": message}
+            return False, message, True
+
+        context["review"] = redact_sensitive_value(report.model_dump(mode="json"))
+        if report.is_approved:
+            return True, None, False
+
+        blocking = [
+            f"{f.file}:{f.line or '?'} {f.comment}"
+            for f in report.findings
+            if str(f.severity).upper() == "BLOCKING"
+        ]
+        details = redact_sensitive_text(
+            "Reviewer requested changes: " + " | ".join([report.summary, *report.blocking_reasons, *blocking])
+        )
+        return False, details, bool(report.verdict_failed)
+
     def execute_mission(self, goal: str) -> MissionSummary:
         goal = redact_sensitive_text(goal)
         start_time = time.time()
@@ -187,6 +275,11 @@ class AdaptiveOrchestrator:
 
         self.state_machine._persist()
 
+        base_commit = current_commit(self.workspace_root)
+        self.state_machine.state.context_variables["workspace_root"] = str(self.workspace_root)
+        if base_commit:
+            self.state_machine.state.context_variables["base_commit"] = base_commit
+        self.state_machine._persist()
         try:
             self._initialize_agents()
             self._sync_agents_with_state_machine(self.state_machine)
@@ -198,36 +291,50 @@ class AdaptiveOrchestrator:
 
             if self.state_machine.state.status == MissionStatus.PENDING:
                 self.state_machine.start_mission()
+            elif self.state_machine.state.status == MissionStatus.PAUSED:
+                self.state_machine.resume_mission()
 
-            self.state_machine.state.context_variables["phase"] = MissionPhase.PLANNING.value
-            self.state_machine.transition_role(AgentRole.CTO)
+            plan_data = self.state_machine.state.context_variables.get("dynamic_plan")
+            if plan_data and isinstance(plan_data, dict) and plan_data.get("tasks"):
+                try:
+                    self.dynamic_plan = DynamicPlan.model_validate(plan_data)
+                except Exception:
+                    self.dynamic_plan = None
 
-            cto_plan = self.cto.plan_mission(goal)
-            self.state_machine.state.context_variables["mission_plan"] = redact_sensitive_value(
-                cto_plan.model_dump()
-            )
-            if self.state_machine.state.context_variables.get("partial_result_reason"):
-                raise RuntimeError("Mission stopped at the configured budget.")
+            if self.dynamic_plan is None:
+                self.state_machine.state.context_variables["phase"] = MissionPhase.PLANNING.value
+                self.state_machine.transition_role(AgentRole.CTO)
 
-            self.dynamic_plan = DynamicPlan(goal=goal)
-            for t in cto_plan.tasks:
-                self.dynamic_plan.add_task(
-                    PlanTask(
-                        task_id=t.task_id,
-                        title=t.title,
-                        description=t.description,
-                        role=_resolve_role(t.assigned_to),
-                        depends_on=list(t.depends_on),
-                        verification_condition="pytest",
+                cto_plan = self.cto.plan_mission(goal)
+                self.state_machine.state.context_variables["mission_plan"] = redact_sensitive_value(
+                    cto_plan.model_dump()
+                )
+                if self.state_machine.state.context_variables.get("partial_result_reason"):
+                    raise RuntimeError("Mission stopped at the configured budget.")
+
+                self.dynamic_plan = DynamicPlan(goal=goal)
+                for t in cto_plan.tasks:
+                    self.dynamic_plan.add_task(
+                        PlanTask(
+                            task_id=t.task_id,
+                            title=t.title,
+                            description=t.description,
+                            role=_resolve_role(t.assigned_to),
+                            depends_on=list(t.depends_on),
+                            verification_condition="pytest",
+                        )
                     )
+
+                self.state_machine.state.context_variables["dynamic_plan"] = (
+                    self.dynamic_plan.model_dump()
                 )
 
-            self.state_machine.state.context_variables["dynamic_plan"] = (
-                self.dynamic_plan.model_dump()
-            )
+            if not self.dynamic_plan.tasks:
+                raise RuntimeError("Planner returned an empty implementation plan; refusing to claim mission completion.")
+
             self.state_machine.state.context_variables["phase"] = MissionPhase.EXECUTION.value
 
-            max_loop_iterations = len(self.dynamic_plan.tasks) * 3 + 10
+            max_loop_iterations = min(20, max(4, len(self.dynamic_plan.tasks) * 2 + 4))
             iterations = 0
 
             while (
@@ -281,21 +388,44 @@ class AdaptiveOrchestrator:
                         f"IMPORTANT: Start by inspecting necessary context or writing code immediately."
                     )
 
-                    result_output = agent.run(task_instruction, max_iterations=15)
+                    result_output = agent.run(task_instruction, max_iterations=40)
                     tasks_executed.append(task.task_id)
 
                     if self.state_machine.state.context_variables.get("partial_result_reason"):
                         raise RuntimeError("Mission stopped at the configured budget.")
 
-                    if "ERROR:" in result_output or "Execution error:" in result_output:
+                    workspace_has_changes = False
+                    try:
+                        proc = subprocess.run(
+                            ["git", "status", "--porcelain"],
+                            cwd=self.workspace_root,
+                            capture_output=True,
+                            text=True,
+                        )
+                        if proc.returncode == 0 and proc.stdout.strip():
+                            workspace_has_changes = True
+                    except Exception:
+                        pass
+
+                    agent_finished = getattr(agent, "_last_run_completed", True) or workspace_has_changes
+                    has_error = result_output.lstrip().startswith(("ERROR:", "Execution error:"))
+                    if has_error or not agent_finished:
                         task.retry_count += 1
+                        failure_reason = (
+                            result_output[:300] if has_error else
+                            "Agent exhausted its bounded iterations without emitting a final completion signal."
+                        )
+                        task.error = failure_reason
                         self.ledger.record_failure(
                             task_id=task.task_id,
                             role=task.role,
-                            error_message=result_output[:300],
+                            error_message=failure_reason,
                             attempted_action=task.title,
-                            root_cause_analysis="Agent run encountered tool execution error.",
-                            avoidance_rule=f"Revise implementation strategy for {task.title}.",
+                            root_cause_analysis=(
+                                "Agent run encountered a tool error." if has_error else
+                                "The agent did not close its task after the available action/observation cycles."
+                            ),
+                            avoidance_rule=f"Revise the approach and finish with verifiable evidence for {task.title}.",
                         )
                         if task.retry_count <= task.max_retries:
                             task.status = TaskStatus.PENDING
@@ -303,13 +433,42 @@ class AdaptiveOrchestrator:
                             task.status = TaskStatus.FAILED
                     else:
                         task.status = TaskStatus.COMPLETED
+                        task.error = None
                         task.result_summary = result_output[:300]
+
+            # Never proceed to verification/finalization when the plan was only partly
+            # executed (for example, when the supervisor loop hit its safety ceiling).
+            if not self.dynamic_plan.is_all_completed():
+                incomplete = [
+                    f"{task.task_id}:{task.status.value}"
+                    for task in self.dynamic_plan.tasks.values()
+                    if task.status not in (TaskStatus.COMPLETED, TaskStatus.SKIPPED)
+                ]
+                raise RuntimeError("Implementation plan did not finish; refusing to verify or claim success: " + ", ".join(incomplete))
 
             self.state_machine.state.context_variables["phase"] = MissionPhase.VERIFICATION.value
 
             while not self.state_machine.state.is_terminal:
                 self.state_machine.transition_role(AgentRole.QA)
                 qa_report = self.qa.run_and_report()
+                if qa_report.no_tests_collected:
+                    bootstrap_attempted = bool(
+                        self.state_machine.state.context_variables.get("qa_test_bootstrap_attempted")
+                    )
+                    if not bootstrap_attempted:
+                        self.state_machine.state.context_variables["qa_test_bootstrap_attempted"] = True
+                        self.state_machine._persist()
+                        bootstrap_result = self.qa.create_acceptance_tests(goal)
+                        self.state_machine.state.context_variables["qa_test_bootstrap"] = bootstrap_result[:1000]
+                        tests_created = bootstrap_result.startswith("ACCEPTANCE_TESTS_CREATED")
+                        qa_report = self.qa.run_and_report()
+                        qa_report.acceptance_tests_generated = tests_created
+                    if qa_report.no_tests_collected:
+                        self.state_machine.fail_mission(
+                            "NO_TESTS_COLLECTED remained after the single acceptance-test bootstrap attempt; "
+                            "verification cannot be claimed. Check the repository test stack or add a supported verifier."
+                        )
+                        break
                 self.state_machine.state.context_variables["qa_report"] = qa_report.model_dump()
                 if self.state_machine.state.context_variables.get("partial_result_reason"):
                     raise RuntimeError("Mission stopped at the configured budget.")
@@ -320,13 +479,34 @@ class AdaptiveOrchestrator:
                 if self.state_machine.state.context_variables.get("partial_result_reason"):
                     raise RuntimeError("Mission stopped at the configured budget.")
 
+                integrity_ok, integrity_violations = audit_test_changes(
+                    self.workspace_root, base_commit, goal
+                )
+                self.state_machine.state.context_variables["test_integrity"] = {
+                    "passed": integrity_ok,
+                    "notes": integrity_violations,
+                }
+                review_approved, review_details, review_fatal = self._review_changes(
+                    goal, base_commit, qa_report, sec_report
+                )
+                if review_fatal:
+                    self.state_machine.fail_mission(
+                        redact_sensitive_text(review_details or "Reviewer produced no verdict.")
+                    )
+                    break
                 all_invariants_passed, invariant_results = HardInvariantEngine.evaluate(
                     qa_report=qa_report,
                     sec_report=sec_report,
-                    reviewer_approved=True,
-                    test_integrity_passed=True,
+                    reviewer_approved=review_approved,
+                    test_integrity_passed=integrity_ok,
+                    test_integrity_details="; ".join(integrity_violations) if not integrity_ok else None,
+                    reviewer_details=review_details,
                 )
 
+                self.state_machine.state.context_variables["invariants"] = [
+                    {"name": r.name, "passed": r.passed, "details": r.details}
+                    for r in invariant_results
+                ]
                 if all_invariants_passed:
                     if repair_history:
                         repair_history[-1].resolved = True
@@ -370,7 +550,10 @@ class AdaptiveOrchestrator:
                     f"The following invariants failed verification:\n"
                     + "\n".join(f"- {issue}" for issue in issues)
                     + f"\n\n{self.ledger.format_guidance_for_planner()}\n"
-                    + "\nPlease analyze the failures, modify code to resolve them, and ensure all tests pass."
+                    + "\nCRITICAL ACTION REQUIRED:\n"
+                    "- If no tests were collected, report that to the supervisor; do not create fake tests or repeat the same command.\n"
+                    "- If tests failed, inspect the failure trace, use `edit_file` or `write_file` to fix the implementation, and verify it.\n"
+                    "- Do NOT repeatedly browse or list directories; directly create the missing test or fix the failing code."
                 )
                 dev_patch_summary = self.dev.run(repair_prompt)
                 if self.state_machine.state.context_variables.get("partial_result_reason"):
@@ -388,11 +571,18 @@ class AdaptiveOrchestrator:
 
             if not self.state_machine.state.is_terminal:
                 self.state_machine.state.context_variables["phase"] = MissionPhase.OPERATIONS.value
-                self.state_machine.transition_role(AgentRole.OPS)
-                ops_report = self.ops.health_check()
-                self.state_machine.state.context_variables["ops_report"] = ops_report
-                if self.state_machine.state.context_variables.get("partial_result_reason"):
-                    raise RuntimeError("Mission stopped at the configured budget.")
+                if _requires_ops_validation(self.workspace_root, base_commit):
+                    self.state_machine.transition_role(AgentRole.OPS)
+                    ops_report = self.ops.health_check()
+                    self.state_machine.state.context_variables["ops_report"] = ops_report
+                    if self.state_machine.state.context_variables.get("partial_result_reason"):
+                        raise RuntimeError("Mission stopped at the configured budget.")
+                else:
+                    ops_report = (
+                        "Skipped: the verified diff contains only static/documentation assets; "
+                        "no runtime, dependency, build, CI, or deployment configuration changed."
+                    )
+                    self.state_machine.state.context_variables["ops_report"] = ops_report
 
             self.state_machine.state.context_variables["phase"] = MissionPhase.FINALIZATION.value
             if not self.state_machine.state.is_terminal:
@@ -402,12 +592,20 @@ class AdaptiveOrchestrator:
 
         except Exception as exc:
             partial_reason = self.state_machine.state.context_variables.get("partial_result_reason")
-            if partial_reason and self.state_machine.state.status != MissionStatus.PAUSED:
-                self.state_machine.pause_mission()
-            elif not self.state_machine.state.is_terminal:
-                self.state_machine.fail_mission(
-                    redact_sensitive_text(f"Mission failed with error: {exc}")
-                )
+            if not self.state_machine.state.is_terminal:
+                # Budget exhaustion must FAIL the mission permanently, never PAUSE it.
+                # Pausing on an exhausted budget creates an infinite pause→resume→blocked loop.
+                if partial_reason:
+                    self.state_machine.fail_mission(
+                        redact_sensitive_text(
+                            f"Mission stopped: token/cost budget exhausted. {partial_reason} "
+                            "To continue this work, launch a new mission."
+                        )
+                    )
+                else:
+                    self.state_machine.fail_mission(
+                        redact_sensitive_text(f"Mission failed with error: {exc}")
+                    )
 
             duration = round(time.time() - start_time, 2)
             return MissionSummary(
