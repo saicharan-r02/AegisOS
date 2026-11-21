@@ -1,8 +1,10 @@
 import ast
 import os
+from pathlib import Path
 
 from pydantic import BaseModel, Field
 
+from aegis_os.sandbox.path_guard import PathTraversalError, validate_path
 from aegis_os.tools.base import BaseAegisTool, ToolResult
 
 
@@ -73,6 +75,23 @@ class ASTGrepTool(BaseAegisTool):
 
     name = "ast_grep"
     parallel_safe = True
+    _ignored_dirs = frozenset(
+        {
+            ".git",
+            ".venv",
+            "venv",
+            "env",
+            "node_modules",
+            "__pycache__",
+            ".aegis",
+            "site-packages",
+            "dist",
+            "build",
+            ".pytest_cache",
+            ".mypy_cache",
+            ".ruff_cache",
+        }
+    )
     description = (
         "Search Python source files for function or class definitions by name using "
         "AST parsing. Returns file path and line number without reading file contents. "
@@ -80,20 +99,30 @@ class ASTGrepTool(BaseAegisTool):
     )
     args_schema = ASTGrepArgs
 
+    def __init__(self, workspace_root: Path | str | None = None) -> None:
+        self.workspace_root = Path(workspace_root) if workspace_root is not None else None
+
     def _execute(self, args: ASTGrepArgs) -> ToolResult:
         search_path = args.search_path
         all_matches: list[_ASTMatch] = []
+
+        if self.workspace_root is not None:
+            try:
+                search_path = str(validate_path(args.search_path, self.workspace_root))
+            except PathTraversalError as exc:
+                return ToolResult.fail(error=str(exc))
 
         if os.path.isfile(search_path):
             python_files = [search_path]
         elif os.path.isdir(search_path):
             python_files = []
-            for root, _dirs, files in os.walk(search_path):
+            for root, dirs, files in os.walk(search_path):
+                dirs[:] = [d for d in dirs if d not in self._ignored_dirs]
                 for fname in files:
                     if fname.endswith(".py"):
                         python_files.append(os.path.join(root, fname))
         else:
-            return ToolResult.fail(error=f"Path does not exist: {search_path}")
+            return ToolResult.fail(error=f"Path does not exist: {args.search_path}")
 
         for fpath in python_files:
             all_matches.extend(_grep_file(fpath, args.symbol_name, args.symbol_type))
@@ -101,15 +130,23 @@ class ASTGrepTool(BaseAegisTool):
         if not all_matches:
             return ToolResult(
                 success=True,
-                output=f"No symbols matching '{args.symbol_name}' found in {search_path}.",
+                output=f"No symbols matching '{args.symbol_name}' found in {args.search_path}.",
                 error=None,
                 metadata={"match_count": 0},
             )
 
-        lines = [str(m) for m in all_matches]
+        lines = [self._display(m) for m in all_matches]
         return ToolResult(
             success=True,
             output="\n".join(lines),
             error=None,
             metadata={"match_count": len(all_matches)},
         )
+
+    def _display(self, match: "_ASTMatch") -> str:
+        """Show paths relative to the project so the model never sees server-internal folders."""
+        text = str(match)
+        if self.workspace_root is not None:
+            root = str(self.workspace_root.resolve())
+            text = text.replace(root + os.sep, "", 1)
+        return text
