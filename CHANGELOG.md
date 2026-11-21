@@ -4,6 +4,29 @@ All notable changes to AegisOS are documented in this file in accordance with [K
 
 ---
 
+## [Unreleased]
+
+### Fixed
+- `.gitignore` no longer hides `aegis_os/workspace/` or the `adv-01` fixture `.env`.
+- War Room entry page restored (`aegis_os/static/index.html` re-synced with `web/dist/`).
+- Added missing `subprocess` import in `aegis_os/orchestration/adaptive.py` (workspace-change detection now works).
+- Fixed wrong attribute names in PR Pilot PR creation (`create_or_update_pr`), API cost metrics (`tokens_used`, `cost_used_usd`), and `aegis chat /map` (`render_map`).
+- Replaced hard-coded `"v2.0"` in GitHub PR footer with `aegis_os.__version__`.
+
+### Added
+- `LICENSE` file (MIT).
+- `.dockerignore` for containerized environments.
+- Added `NVIDIA_API_KEY`, `NVIDIA_BASE_URL`, and `GITHUB_TOKEN` environment variables to `docker-compose.yml`.
+
+### Changed
+- `aegis.toml`: changed `max_tokens` from 15,000,000 to 1,500,000.
+- `pyproject.toml`: re-enabled property-based hypothesis tests in default pytest runs.
+
+### Removed
+- `calculator.py` and its test suite `tests/unit/test_calculator.py`.
+- Temporary `REFACTOR_PROGRESS.md`.
+- Unused provider dependencies in `requirements.txt` (`langchain-groq`, `langchain-anthropic`, `langchain-google-genai`, `langchain-ollama`, `langchain-community`), `Dockerfile.sandbox-node`, and eval generator scripts (`eval/expand_dataset.py`, `eval/setup_tasks.py`).
+
 ## [2.1.2] - 2026-11-20 (PR Pilot Interface & Deterministic PR Runner)
 
 ### Added
@@ -18,9 +41,9 @@ All notable changes to AegisOS are documented in this file in accordance with [K
 ## [2.1.1] - 2026-11-15 (Mission Reliability & PR Pilot Patch)
 
 ### Added
-- **PR Pilot Engine & UI**: Added automated GitHub issue-to-PR capability (`aegis_os/pr_pilot.py`), FastAPI solve endpoint (`/api/pr-pilot/solve`), and dedicated web interface (`aegis_os/static/pr-pilot.html` at `http://localhost:8000/pr-pilot`). Supports automated root-cause localization, surgical patch generation, verification, and interactive pull request guides.
+- **PR Pilot Engine & UI**: Added automated GitHub issue-to-PR capability (`aegis_os/pr_pilot.py`), FastAPI endpoints (`/api/pr-pilot/analyze`, `/api/pr-pilot/execute`), and dedicated web interface (`aegis_os/static/pr-pilot.html` at `http://localhost:8000/pr-pilot`). Supports automated root-cause localization, surgical patch generation, verification, and interactive pull request guides.
 - **Workspace Test Auditing**: Added `aegis_os/verification/workspace_audit.py` to detect and block deleted test functions, weakened assertions, or test file removal during autonomous missions.
-- **Comprehensive Verification Suite**: Added `tests/unit/test_pr_pilot.py`, `tests/unit/test_agent_quality.py`, `tests/unit/test_api_real_missions.py`, `tests/unit/test_no_tool_nudge.py`, `tests/unit/test_repo_manager.py`, `tests/unit/test_reviewer_wiring.py`, and `tests/unit/test_workspace_audit.py`, expanding the unit test suite to **399 passing tests** (100% green).
+- **Comprehensive Verification Suite**: Added `tests/unit/test_pr_pilot.py`, `tests/unit/test_agent_quality.py`, `tests/unit/test_api_real_missions.py`, `tests/unit/test_no_tool_nudge.py`, `tests/unit/test_repo_manager.py`, `tests/unit/test_reviewer_wiring.py`, and `tests/unit/test_workspace_audit.py`, expanding the unit test suite to **398 passing tests** (100% green, Python 3.11).
 
 ### Fixed
 - **Python 3.11 Compatibility**: Replaced Python 3.12-only `Path.walk()` with standard `os.walk()` in `aegis_os/intelligence/repo_map.py`, `aegis_os/intelligence/search.py`, and `aegis_os/orchestration/worktree.py`.
@@ -35,7 +58,7 @@ All notable changes to AegisOS are documented in this file in accordance with [K
 - Prevented verification/finalization when planned implementation tasks remain incomplete.
 - Skipped the full Ops health-check agent for static/documentation-only diffs while retaining runtime/build/deployment checks when relevant.
 - Bounded security and operations agent call loops.
-- Reduced default mission, completion, role-context, tool-output, task-iteration, and wall-clock budgets.
+- Bounded resource limits: role context 48,000 tokens, tool output 1,800 tokens, completion 2,048 tokens; mission token (1,500,000 tokens) and wall-clock limits (7,200 s) configured in aegis.toml (no dollar cap; max_cost_usd = 0 means unlimited).
 
 ### Changed
 - Reworked developer, QA, and CTO instructions to be task-aware, avoid repetitive exploration, and use compact plans.
@@ -73,12 +96,12 @@ All notable changes to AegisOS are documented in this file in accordance with [K
 ## [2.0.0] - 2026-10-21 (Production Release)
 
 ### Added
-- **Multi-Provider LLM Router**: Seamless fallback chains across Groq, OpenAI, Anthropic, Gemini, and local OpenAI-compatible endpoints with native function calling and token budgets.
+- **Multi-Provider LLM Router**: Seamless fallback chains across Groq, OpenAI, Anthropic, Gemini, and local OpenAI-compatible endpoints with native function calling and token budgets (superseded in 2.1.0: NVIDIA NIM is the only supported provider).
 - **Docker Sandboxing**: Default containerized execution with dropped capabilities, read-only root FS, non-root user, and disabled network access.
 - **3-Tier CommandPolicy**: Deterministic in-code command authorization (`auto_allow`, `require_approval`, `deny`).
 - **Codebase Intelligence**: Multi-language PageRank `RepoMap`, pure-Python Okapi BM25 search index, and read-only `AegisExplorer` sub-agent.
 - **Dynamic DAG Planning & Adaptive Supervisor**: Replaced linear waterfall with dynamic task DAG, parallel git worktree isolation, `FailureLedger` feedback, and `HardInvariants`.
-- **Anti-Gaming Verification**: `BaselineVerifier`, AST `TestIntegrityGuard` (blocking test deletion, skip markers, assertion weakening), independent `AegisReviewer`, and `--tdd` Red→Green coordinator.
+- **Anti-Gaming Verification**: `BaselineVerifier`, AST `TestIntegrityGuard` (blocking test deletion, skip markers, assertion weakening), independent `AegisReviewer`, and `--tdd` Red→Green coordinator (TDDCoordinator ships as a library component; no CLI flag is wired).
 - **Cross-Mission Memory**: SQLite episodic mission store, convention learning, and BM25 experience retrieval.
 - **True Filesystem Rollback & Time-Travel**: `ShadowBranchManager` with git shadow commits & tags, dual checkpointing with SQLite, `aegis rollback`, and `aegis rewind`.
 - **Structured Tracing & Replay**: Span-level latency, token, and cost tracking with `SecretRedactor`, JSONL export, and `aegis replay` (zero LLM calls).
