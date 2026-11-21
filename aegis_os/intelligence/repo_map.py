@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import json
+import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -340,10 +341,11 @@ class RepoMap:
 
     def scan_files(self) -> None:
         """Scan workspace files incrementally and update symbols cache."""
-        for root, dirs, files in Path(self.workspace_root).walk():
+        for root, dirs, files in os.walk(str(self.workspace_root)):
+            root_path = Path(root)
             dirs[:] = [d for d in dirs if d not in self._IGNORED_DIRS and not d.startswith(".")]
             for fname in files:
-                fpath = root / fname
+                fpath = root_path / fname
                 if fpath.suffix.lower() not in self._ALLOWED_EXTENSIONS:
                     continue
                 try:
