@@ -25,6 +25,8 @@ from aegis_os.kernel.checkpoint import CheckpointStore
 from aegis_os.kernel.events import EventBus
 from aegis_os.kernel.state import MissionStatus
 from aegis_os.kernel.state_machine import MissionOrchestrator
+from aegis_os.memory.recorder import record_mission_episode
+from aegis_os.verification.workspace_audit import ensure_git_workspace
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -32,7 +34,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="aegis", description="AegisOS: Autonomous AI Engineering Organization CLI"
     )
-    parser.add_argument("--version", action="version", version="AegisOS 2.0.0 (Production)")
+    parser.add_argument("--version", action="version", version="AegisOS 2.1.1 (Mission Reliability Patch)")
     subparsers = parser.add_subparsers(dest="subcommand", help="Operational Subcommands")
 
     run_p = subparsers.add_parser(
@@ -211,7 +213,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Use host subprocess mode instead of Docker; command policy still applies.",
     )
 
-    server_p = subparsers.add_parser("server", help="Launch the War Room Web Dashboard backend")
+    server_p = subparsers.add_parser(
+        "server",
+        aliases=["api"],
+        help="Launch the War Room Web Dashboard backend",
+    )
     server_p.add_argument("--host", type=str, default="127.0.0.1", help="Host IP to bind to")
     server_p.add_argument("--port", type=int, default=8000, help="Port to run on")
     server_p.add_argument(
@@ -239,6 +245,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     doctor_p.add_argument("-w", "--workspace", type=str, default=".", help="Target workspace root")
 
+
+    pilot_p = subparsers.add_parser(
+        "pr-pilot", help="Analyze a GitHub issue, draft patch, and generate a 10-step PR guide"
+    )
+    pilot_p.add_argument("issue_url", type=str, help="GitHub issue URL")
+    pilot_p.add_argument("-u", "--username", type=str, default=None, help="Your GitHub username")
+    pilot_p.add_argument("-f", "--file", type=str, default=None, help="Path to file with issue text/code")
+    pilot_p.add_argument("-p", "--provider", type=str, default="nvidia", help="LLM provider")
+    pilot_p.add_argument("-m", "--model", type=str, default=None, help="Model identifier")
+    pilot_p.add_argument("--json", action="store_true", help="Output raw JSON")
+
     return parser
 
 
@@ -257,6 +274,12 @@ def handle_run(args: argparse.Namespace, display: AegisDisplay) -> int:
     display.console.print(
         f"[dim]Workspace: {ws} | Provider: {args.provider or 'from aegis.toml'} | Max Repairs: {args.max_repairs}[/dim]\n"
     )
+
+    git_ok, git_note = ensure_git_workspace(ws)
+    if not git_ok:
+        display.console.print(
+            f"[yellow]Warning: {git_note}. Git tools, diff review and test-integrity checks are limited.[/yellow]"
+        )
 
     store = CheckpointStore(db_path=db)
     bus = EventBus()
@@ -301,6 +324,10 @@ def handle_run(args: argparse.Namespace, display: AegisDisplay) -> int:
     )
 
     summary = orchestrator.execute_mission(args.goal)
+
+    final_state = store.load_latest_state(summary.session_id)
+    if final_state is not None:
+        record_mission_episode(final_state, memory_root=Path.cwd())
 
     display.console.print("\n")
     if summary.plan:
@@ -565,13 +592,58 @@ def handle_server(args: argparse.Namespace, display: AegisDisplay) -> int:
         db.parent.mkdir(parents=True, exist_ok=True)
 
     display.console.print(
-        f"[bold cyan]AegisOS War Room[/bold cyan]  http://{args.host}:{args.port}"
+        f"[bold cyan]AegisOS PR Pilot[/bold cyan]  http://{args.host}:{args.port}"
+    )
+    display.console.print(
+        f"[bold green]PR Pilot UI[/bold green]       http://{args.host}:{args.port}/pr-pilot"
     )
     display.console.print(f"[dim]Checkpoint DB : {db.resolve()}[/dim]")
     display.console.print("[dim]Press Ctrl+C to stop.[/dim]\n")
 
     init_app(db)
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
+    return 0
+
+
+def handle_pr_pilot(args: argparse.Namespace, display: AegisDisplay) -> int:
+    """Run PR Pilot analysis and print Analysis, Solution, PR Guide, and PR Text."""
+    import json
+
+    from aegis_os.pr_pilot import analyze_pr_issue
+
+    issue_text = ""
+    if args.file:
+        issue_text = Path(args.file).read_text(encoding="utf-8")
+    try:
+        res = analyze_pr_issue(
+            issue_url=args.issue_url,
+            github_username=args.username,
+            issue_text=issue_text,
+            provider=args.provider,
+            model=args.model,
+        )
+    except ValueError as exc:
+        display.console.print(f"[red]Error:[/red] {exc}")
+        return 1
+
+    if args.json:
+        print(json.dumps(res.to_dict(), indent=2))
+        return 0
+
+    display.console.print(f"[bold cyan]PR Pilot[/bold cyan] {res.owner}/{res.repo} #{res.issue_number}")
+    if res.ai_error:
+        display.console.print(f"[yellow]AI note:[/yellow] {res.ai_error}")
+    if res.analysis:
+        a = res.analysis
+        display.console.print(f"\n[bold]Kind:[/bold] {a.get('kind')}  [bold]Difficulty:[/bold] {a.get('difficulty')}")
+        display.console.print(f"[bold]Summary:[/bold] {a.get('summary')}")
+        display.console.print(f"[bold]Root Cause:[/bold] {a.get('rootCause')}")
+        if a.get("patch"):
+            display.console.print(f"\n[bold]Patch:[/bold]\n{a['patch']}")
+    display.console.print("\n[bold]10-Step PR Guide:[/bold]")
+    for step in res.guide:
+        display.console.print(f"  {step.step_number}. {step.title}")
+        display.console.print(f"     {step.command}")
     return 0
 
 
@@ -602,7 +674,7 @@ def main(argv: list[str] | None = None) -> int:
         return handle_replay(args, display)
     elif args.subcommand == "benchmark":
         return handle_benchmark(args, display)
-    elif args.subcommand == "server":
+    elif args.subcommand in ("server", "api"):
         return handle_server(args, display)
     elif args.subcommand == "chat":
         return handle_chat(args, display)
@@ -610,6 +682,8 @@ def main(argv: list[str] | None = None) -> int:
         return handle_config(args, display)
     elif args.subcommand == "doctor":
         return handle_doctor(args, display)
+    elif args.subcommand == "pr-pilot":
+        return handle_pr_pilot(args, display)
     return 0
 
 
