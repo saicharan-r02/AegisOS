@@ -24,6 +24,8 @@ AegisOS is being transformed from a prototype ReAct multi-agent pipeline into an
 - **Prompt caching:** OpenAI caching is provider-managed and enabled by its API when eligible; other adapters advertise caching as unsupported until their cache controls are configured and tested.
 - **Trade-off:** Provider IDs, model IDs, timeouts, prices, budgets, and role context limits stay in configuration. Models without a price entry cannot be used while a dollar budget is enabled.
 
+*Status note: superseded in v2.1: `SUPPORTED_PROVIDERS = ("nvidia",)`; the other adapters are no longer wired.*
+
 ## ADR 0003: Deterministic Sandbox Isolation and In-Code Security Policy
 - **Status:** Accepted
 - **Date:** 2026-10-20
@@ -67,6 +69,8 @@ AegisOS is being transformed from a prototype ReAct multi-agent pipeline into an
   2. **AST-Diff Test Integrity Guard:** `TestIntegrityGuard` compares AST structures before and after test edits to deterministically detect and reject deleted test functions, skip/xfail decorators, reduced assertion counts, trivial assertions (`assert True`), and exception suppression.
   3. **Independent Reviewer Agent:** `AegisReviewer` operates with a completely fresh context receiving only the objective, git diff, and verification reports. A mission cannot complete without structured `APPROVED` sign-off.
   4. **TDD Mode:** `TDDCoordinator` enforces the Red -> Green cycle under `--tdd`: the developer must write a reproduction test, verify it fails (Red), and then write code to make it pass (Green).
+
+*Status note: `TDDCoordinator` exists and is unit-tested but is not wired to a `--tdd` CLI flag (also referenced in ADR 0001).*
 
 ## ADR 0007: Multi-Tier Memory, Episodic Persistence, and Convention Learning
 - **Status:** Accepted
@@ -117,13 +121,21 @@ AegisOS is being transformed from a prototype ReAct multi-agent pipeline into an
 - **Decisions:**
   1. **Expanded Golden Dataset:** Expanded `eval/tasks/` from 10 to 34 tasks covering features, bug fixes, refactoring, multi-file changes, JavaScript/TypeScript, and adversarial attacks.
   2. **Adversarial Invariant Verification:** Added dedicated adversarial tasks verifying that secret exfiltration (`.env`), test deletion/tampering, and prompt injection attacks are defeated 100% of the time.
-  3. **Ablation Studies:** Proved that RepoMap indexing saves 54% tokens, TestIntegrityGuard eliminates 100% of test evasion, and FailureLedger reduces retry loops by 38%.
+  3. **Ablation Studies:** Reported that RepoMap indexing saves 54% tokens, TestIntegrityGuard eliminates 100% of test evasion, and FailureLedger reduces retry loops by 38%.
   4. **Published Empirical Report:** Published complete results in `docs/RESULTS.md`.
 
-
-
-
-
+## ADR 0012: v2.1.1 Stability Pass
+- **Status:** Accepted
+- **Date:** 2026-11-21
+- **Context:** Live mission traces showed the control loop failing to converge: repeated tool calls, compounding context, QA looping on zero-test results, budget inflation on resume, and hard-coded v2.0 strings mismatched against `aegis_os.__version__ = "2.1.1"`. The codebase also contained stale provider adapters, dead files (`calculator.py`, `Dockerfile.sandbox-node`), and a `max_tokens` typo (`15000000` instead of `1500000`).
+- **Decisions:**
+  1. **Budget fix:** `aegis.toml` `max_tokens` corrected from `15000000` to `1500000`. `max_cost_usd = 0` (dollar budget disabled; token and step limits are the primary controls).
+  2. **Provider consolidation:** `requirements.txt` and `.env.example` updated to remove all non-NVIDIA LangChain adapters (`langchain-groq`, `langchain-anthropic`, `langchain-google-genai`, `langchain-ollama`, `langchain-community`). `SUPPORTED_PROVIDERS = ("nvidia",)` in `kernel/llm.py` is now the sole wired provider.
+  3. **Dead-file removal:** `calculator.py`, `tests/unit/test_calculator.py`, `Dockerfile.sandbox-node`, `eval/expand_dataset.py`, `eval/setup_tasks.py`, and stale static assets removed via `git rm`.
+  4. **Code fixes:** `import subprocess` added to `adaptive.py` (F821 ruff error); `api.py` attribute names corrected (`tokens_used`, `cost_used_usd`); `cli/chat.py` corrected to call `render_map()` not `render_outline()`; `integrations/github.py` PR footer updated to `f"v{aegis_os.__version__}"`.
+  5. **gitignore tightened:** `workspace/` → `/workspace/`, `workspaces/` → `/workspaces/` to stop hiding `aegis_os/workspace/`; cache dirs and `!eval/tasks/*/fixture/.env` added.
+  6. **Docs corrected:** `REAL_AGENT_UPGRADE.md` resource ceiling figures updated to match `aegis.toml` and CLI defaults; cost-ceiling paragraph corrected (`max_cost_usd = 0`); RESULTS/DECISIONS ablation claims changed from "Proved" to "Reported"; DEMO sandbox image name updated; ADR 0002/0006 status notes added.
+  7. **Test suite:** all tests pass on Python 3.11 with `ruff check` returning no errors after fixes.
 
 
 
