@@ -162,7 +162,7 @@ def _build_model(
     key = _nvidia_api_key(settings)
     if not key:
         raise ConfigurationError(
-            "NVIDIA_API_KEY is missing. Add it to C:\\AegisOS\\.env."
+            "NVIDIA_API_KEY is missing. Add it to the .env file in your AegisOS folder (see .env.example)."
         )
 
     from langchain_openai import ChatOpenAI
