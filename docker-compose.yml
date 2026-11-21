@@ -11,10 +11,9 @@ services:
       - .:/workspace
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
-      - GROQ_API_KEY=${GROQ_API_KEY:-}
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - NVIDIA_API_KEY=${NVIDIA_API_KEY:-}
+      - NVIDIA_BASE_URL=${NVIDIA_BASE_URL:-https://integrate.api.nvidia.com/v1}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
       - AEGIS_API_TOKEN=${AEGIS_API_TOKEN:-}
     restart: unless-stopped
     command: ["aegis", "server", "--host", "0.0.0.0", "--port", "8000", "--db-path", "/app/.aegis/checkpoints.db"]
