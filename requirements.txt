@@ -2,14 +2,9 @@
 pydantic>=2.5.0
 pydantic-settings>=2.0.0
 
-# LLM Providers
+# LLM Provider (NVIDIA NIM via OpenAI-compatible API)
 langchain-core>=0.2.0
-langchain-groq>=0.1.0
 langchain-openai>=0.1.0
-langchain-community>=0.2.0
-langchain-ollama>=1.1.0
-langchain-anthropic>=0.3.0
-langchain-google-genai>=2.0.0
 
 
 # Utilities
