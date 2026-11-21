@@ -40,7 +40,7 @@ Each task is evaluated inside an isolated temporary directory:
 aegis benchmark run
 
 # Run with explicit provider override
-aegis benchmark run -p groq -m llama-3.3-70b-versatile
+aegis benchmark run -p nvidia -m nvidia/nemotron-3.5-lightning-30b-a3b
 ```
 
 ### 3.2 Running a Specific Task
