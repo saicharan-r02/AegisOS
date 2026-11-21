@@ -78,7 +78,7 @@ class AegisChatSession:
             elif user_input == "/map":
                 self.display.console.print("[dim]Generating RepoMap...[/dim]")
                 rm = RepoMap(self.workspace_root)
-                outline = rm.render_outline(max_tokens=500)
+                outline = rm.render_map(max_tokens=500)
                 self.display.console.print(
                     f"[bold green]Repository Map Outline:[/bold green]\n{outline}"
                 )
