@@ -159,7 +159,8 @@ class DynamicPlan(BaseModel):
             return
 
         failed_task = self.tasks[failed_task_id]
-        failed_task.status = TaskStatus.FAILED
+        failed_task.status = TaskStatus.SKIPPED
+        failed_task.result_summary = f"Superseded by {[r.task_id for r in replacement_tasks]}"
 
         # Find tasks that depended on failed_task
         dependent_task_ids = [
