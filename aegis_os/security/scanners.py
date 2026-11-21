@@ -83,7 +83,7 @@ class SecurityScannerRunner:
             )
         relative_target = target_path.relative_to(self.workspace_root).as_posix() or "."
 
-        bandit = self._run_json("bandit", ["-r", relative_target, "-f", "json", "-q"])
+        bandit = self._run_json("bandit", ["-r", relative_target, "-s", "B101", "-f", "json", "-q"])
         if bandit is None:
             report.runs.append(
                 ScannerRun(scanner="bandit", status="missing", error="bandit is not installed.")
