@@ -149,6 +149,20 @@ class WriteFileTool(BaseAegisTool):
                 )
             )
 
+        if safe_path.is_file():
+            try:
+                existing = safe_path.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                existing = None
+            if existing is not None and existing == args.content:
+                return ToolResult.ok(
+                    output=(
+                        f"[NO_CHANGE] '{args.path}' already contains exactly this content; nothing was "
+                        "written. This item is already done - move on to the next unfinished item, "
+                        "or give your final answer if everything is finished."
+                    )
+                )
+
         # Atomic write: write to a temp file, then rename
         temp_path = safe_path.with_suffix(safe_path.suffix + ".aegis_tmp")
         try:
