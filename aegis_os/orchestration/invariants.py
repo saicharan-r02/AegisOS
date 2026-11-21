@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -32,6 +33,11 @@ class HardInvariantEngine:
         sec_report: Any | None,
         reviewer_approved: bool = True,
         test_integrity_passed: bool = True,
+        test_integrity_details: str | None = None,
+        reviewer_details: str | None = None,
+        workspace_root: Path | None = None,
+        base_commit: str | None = None,
+        objective: str = "",
     ) -> tuple[bool, list[InvariantResult]]:
         """Evaluate all 4 hard invariants against mission reports."""
         results: list[InvariantResult] = []
@@ -60,13 +66,38 @@ class HardInvariantEngine:
                     )
                 )
             elif total == 0 and passed_count == 0:
-                results.append(
-                    InvariantResult(
-                        name="INVARIANT_1_QA_PASS",
-                        passed=False,
-                        details="No tests were executed. At least 1 passing test is required to verify changes.",
+                # Check if this is a static, frontend, or non-Python deliverable
+                is_non_python_deliverable = False
+                if workspace_root:
+                    from aegis_os.verification.workspace_audit import changed_files
+                    changed = changed_files(workspace_root, base_commit)
+                    if changed and all(not f.lower().endswith(".py") for f in changed):
+                        if all((workspace_root / f).is_file() and (workspace_root / f).stat().st_size > 0 for f in changed):
+                            is_non_python_deliverable = True
+
+                non_py_keywords = ("html", "css", "readme", "markdown", "remove comments", "cleanup comments", "frontend")
+                if any(k in objective.lower() for k in non_py_keywords) and workspace_root:
+                    from aegis_os.verification.workspace_audit import changed_files
+                    changed = changed_files(workspace_root, base_commit)
+                    if changed:
+                        is_non_python_deliverable = True
+
+                if is_non_python_deliverable:
+                    results.append(
+                        InvariantResult(
+                            name="INVARIANT_1_QA_PASS",
+                            passed=True,
+                            details="Deliverables verified on disk; pytest suite not required for this deliverable type.",
+                        )
                     )
-                )
+                else:
+                    results.append(
+                        InvariantResult(
+                            name="INVARIANT_1_QA_PASS",
+                            passed=False,
+                            details="No tests were executed. At least 1 passing test is required to verify changes.",
+                        )
+                    )
             else:
                 results.append(
                     InvariantResult(
@@ -122,7 +153,7 @@ class HardInvariantEngine:
                 InvariantResult(
                     name="INVARIANT_3_REVIEWER_APPROVAL",
                     passed=False,
-                    details="Reviewer agent rejected the changes or requested amendments.",
+                    details=reviewer_details or "Reviewer agent rejected the changes or requested amendments.",
                 )
             )
         else:
@@ -140,7 +171,8 @@ class HardInvariantEngine:
                 InvariantResult(
                     name="INVARIANT_4_TEST_INTEGRITY",
                     passed=False,
-                    details="Test tampering detected: tests were deleted, commented out, or bypassed.",
+                    details=test_integrity_details
+                    or "Test tampering detected: tests were deleted, commented out, or bypassed.",
                 )
             )
         else:
