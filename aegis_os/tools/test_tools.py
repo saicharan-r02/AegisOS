@@ -64,13 +64,24 @@ class PytestRunnerTool(BaseAegisTool):
         )
         self.policy = policy or CommandPolicy()
 
+    def _relative_target(self, target: str, cwd: Path) -> str:
+        """Turn an absolute path inside the workspace into a relative one (policy-safe, portable)."""
+        try:
+            candidate = Path(target)
+            if candidate.is_absolute():
+                return candidate.resolve().relative_to(cwd.resolve()).as_posix() or "."
+        except (ValueError, OSError):
+            pass
+        return target
+
     def _execute(self, args: PytestRunnerArgs) -> ToolResult:  # type: ignore[override]
         try:
             cwd = validate_path(args.cwd or ".", self.workspace_root)
         except (PathTraversalError, ValueError) as exc:
             return ToolResult.fail(str(exc))
         python_exe = sys.executable if isinstance(self.sandbox, SubprocessSandbox) else "python"
-        cmd_parts = [python_exe, "-m", "pytest", args.target, "--tb=short", "-q"]
+        target = self._relative_target(args.target, cwd)
+        cmd_parts = [python_exe, "-m", "pytest", target, "--tb=short", "-q"]
         if args.extra_args:
             try:
                 cmd_parts.extend(shlex.split(args.extra_args, posix=True))
@@ -115,8 +126,22 @@ class PytestRunnerTool(BaseAegisTool):
             errors = int(errors_match.group(1)) if errors_match else 0
         # Extract failing test names
         failing_tests = re.findall(r"FAILED\s+([\w/\\:.\-]+)", combined)
-        all_passed = result.exit_code == 0 and failed == 0 and errors == 0
+        no_tests_collected = (
+            not result.timed_out
+            and (result.exit_code == 5 or "no tests ran" in combined.lower() or "no tests collected" in combined.lower())
+        )
+        # A zero-test run is not a successful verification, even if a wrapper
+        # accidentally reports exit code 0.
+        all_passed = result.exit_code == 0 and passed > 0 and failed == 0 and errors == 0
         summary = f"Tests: {passed} passed, {failed} failed, {errors} errors."
+        if no_tests_collected:
+            summary += (
+                f"\nNO_TESTS_COLLECTED: No tests were collected from '{target}'. "
+                "Do not rerun the identical command. Ask the supervisor for one focused "
+                "acceptance-test bootstrap or use a verifier for this repository's language."
+            )
+        elif passed == 0 and failed == 0 and errors == 0 and not result.timed_out:
+            summary += "\nUNVERIFIED_TEST_RESULT: pytest returned no parseable test counts."
         if failing_tests:
             summary += "\nFailing tests:\n" + "\n".join(f"  - {t}" for t in failing_tests)
         return ToolResult(
@@ -129,5 +154,7 @@ class PytestRunnerTool(BaseAegisTool):
                 "errors": errors,
                 "failing_tests": failing_tests,
                 "exit_code": result.exit_code,
+                "no_tests_collected": no_tests_collected,
+                "status": "NO_TESTS_COLLECTED" if no_tests_collected else ("PASSED" if all_passed else "FAILED"),
             },
         )
