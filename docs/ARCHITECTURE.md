@@ -1,4 +1,4 @@
-# AegisOS Architecture & Technical Blueprint (v2.0)
+# AegisOS Architecture & Technical Blueprint (v2.1.1)
 
 AegisOS is an enterprise-grade autonomous software-engineering organization coordinating specialized agent roles under deterministic safety policies, codebase intelligence, adaptive DAG planning, and anti-gaming verification.
 
@@ -127,6 +127,8 @@ flowchart LR
 AegisOS/
 ├── aegis_os/
 │   ├── agents/          # Department agent archetypes (CTO, Dev, QA, Sec, Ops)
+│   ├── api.py           # FastAPI War Room server (mission control, event bus, WebSocket)
+│   ├── api_models.py    # Pydantic request/response models for the REST API
 │   ├── cli/             # Rich terminal CLI, display formatting, doctor & chat
 │   ├── config/          # Schema validator for aegis.toml
 │   ├── intelligence/    # RepoMap, AST parser, PageRank, BM25 search & Explorer
@@ -135,14 +137,17 @@ AegisOS/
 │   ├── mcp/             # Model Context Protocol client & plugin engine
 │   ├── memory/          # Multi-tier episodic memory & learned conventions
 │   ├── orchestration/   # Dynamic DAG planner, worktree manager & adaptive loop
+│   ├── pr_pilot.py      # PR Pilot feature: GitHub issue analysis & patch guide
 │   ├── sandbox/         # Docker container sandbox, subprocess fallback, policy
 │   ├── security/        # SecretRedactor & static analysis scanners
+│   ├── static/          # Served static assets: War Room dashboard & PR Pilot UI
 │   ├── timetravel/      # ShadowBranchManager & TimeTravelController
 │   ├── tools/           # Base tool contracts, AST tools, filesystem & VCS tools
 │   ├── tracing/         # Structured span recording, JSONL export & replay engine
-│   └── verification/    # BaselineVerifier, TestIntegrityGuard & AegisReviewer
+│   ├── verification/    # BaselineVerifier, TestIntegrityGuard & AegisReviewer
+│   └── workspace/       # External repo cloning, mission workspace creation & ZIP export
 ├── docs/                # Architecture, baseline, results, ADRs & eval docs
 ├── eval/                # 34-task benchmark suite, golden datasets & judge engine
 ├── web/                 # Vite + React TypeScript War Room mission control dashboard
-└── tests/               # Unit, property, and end-to-end integration test suites
+└── tests/               # Unit and end-to-end integration test suites
 ```
