@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 
 from aegis_os.kernel.context import redact_sensitive_text
 from aegis_os.sandbox.base import SandboxExecutor
-from aegis_os.sandbox.docker_sandbox import DockerSandbox
+from aegis_os.sandbox.docker_sandbox import DockerSandbox, is_docker_available
 from aegis_os.sandbox.path_guard import PathTraversalError, validate_path
 from aegis_os.sandbox.policy import CommandPolicy, CommandTier
 from aegis_os.sandbox.quotas import ExecutionQuota
@@ -59,9 +59,12 @@ class ExecuteCommandTool(BaseAegisTool):
     ) -> None:
         self.workspace_root = workspace_root.resolve()
         self.unsafe_local = unsafe_local
-        self.sandbox: SandboxExecutor = sandbox or (
-            SubprocessSandbox() if unsafe_local else DockerSandbox(self.workspace_root)
-        )
+        if sandbox is not None:
+            self.sandbox = sandbox
+        elif unsafe_local or not is_docker_available():
+            self.sandbox = SubprocessSandbox()
+        else:
+            self.sandbox = DockerSandbox(self.workspace_root)
         self.default_quota = default_quota or ExecutionQuota()
         self.policy = policy or CommandPolicy()
 
