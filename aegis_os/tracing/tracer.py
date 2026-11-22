@@ -195,7 +195,7 @@ class MissionTracer:
         status = t_row["status"] if t_row else "RUNNING"
 
         cursor = self._conn.execute(
-            "SELECT * FROM spans WHERE mission_id = ? ORDER BY started_at ASC", (self.mission_id,)
+            "SELECT * FROM spans WHERE mission_id = ? ORDER BY (parent_span_id IS NOT NULL) ASC, started_at ASC", (self.mission_id,)
         )
         spans: list[SpanRecord] = []
         for r in cursor.fetchall():
