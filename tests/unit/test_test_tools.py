@@ -37,6 +37,16 @@ class TestPytestRunnerTool:
         assert result.error is not None
         assert "1 failed" in result.error
 
+    def test_zero_collected_tests_is_not_success(self,tmp_path: Path) -> None:
+        tool=PytestRunnerTool(tmp_path,unsafe_local=True)
+        result=tool._execute(PytestRunnerArgs(target=str(tmp_path),timeout_seconds=30.0))
+
+        assert result.success is False
+        assert result.metadata["passed"] == 0
+        assert result.metadata["no_tests_collected"] is True
+        assert result.metadata["status"] == "NO_TESTS_COLLECTED"
+        assert "NO_TESTS_COLLECTED" in str(result.error)
+
     def test_pytest_timeout_returns_failure(self,tmp_path: Path) -> None:
         test_file=tmp_path/"test_sleep.py"
         test_file.write_text("import time\ndef test_slow():\n    time.sleep(5)\n")
