@@ -40,6 +40,30 @@ _IGNORED_NAMES = {
     "id_ecdsa",
 }
 
+_docker_available_cache: bool | None = None
+
+
+def is_docker_available(force_refresh: bool = False) -> bool:
+    """Return True only if Docker CLI is installed and the Docker daemon is responding."""
+    global _docker_available_cache
+    if _docker_available_cache is not None and not force_refresh:
+        return _docker_available_cache
+    docker_path = shutil.which("docker")
+    if not docker_path:
+        _docker_available_cache = False
+        return False
+    try:
+        res = subprocess.run(
+            [docker_path, "info"],
+            capture_output=True,
+            timeout=1.5,
+            check=False,
+        )
+        _docker_available_cache = (res.returncode == 0)
+    except Exception:
+        _docker_available_cache = False
+    return _docker_available_cache
+
 
 class DockerSandbox(SandboxExecutor):
     """Run approved commands inside a non-root, network-off Docker container.
@@ -181,6 +205,14 @@ class DockerSandbox(SandboxExecutor):
                 stderr, stderr_truncated = self._truncate(
                     result.stderr, active_quota.max_output_bytes // 2
                 )
+                if result.returncode != 0 and (
+                    "failed to connect to the docker api" in result.stderr.lower()
+                    or "error during connect" in result.stderr.lower()
+                    or "daemon is running" in result.stderr.lower()
+                ):
+                    from aegis_os.sandbox.subprocess_sandbox import SubprocessSandbox
+                    return SubprocessSandbox().execute_command(command, cwd=cwd, quota=quota)
+
                 return CommandResult(
                     exit_code=result.returncode,
                     stdout=stdout,
