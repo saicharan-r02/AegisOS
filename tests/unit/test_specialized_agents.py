@@ -204,6 +204,10 @@ class TestSpecializedAgentsParsing:
         assert missing.findings
         assert empty.errors==1
 
+        no_tests=qa._parse_report("NO_TESTS_COLLECTED: pytest collected no tests")
+        assert no_tests.no_tests_collected is True
+        assert no_tests.passed == 0
+
     @patch("aegis_os.agents.sec.agent.get_llm")
     def test_security_report_rejects_unstructured_output(self,mock_get_llm,tmp_path: Path) -> None:
         mock_get_llm.return_value=MagicMock()
