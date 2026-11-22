@@ -141,6 +141,29 @@ class TestHardInvariants:
         sec_inv = next(r for r in results if r.name == "INVARIANT_2_SEC_CLEARANCE")
         assert not sec_inv.passed
 
+    def test_hard_invariant_allows_non_python_deliverables(self, tmp_path: Path) -> None:
+        login_html = tmp_path / "login.html"
+        login_html.write_text("<html><body>Login</body></html>", encoding="utf-8")
+        import subprocess
+        subprocess.run(["git", "init"], cwd=tmp_path, capture_output=True, check=False)
+        subprocess.run(["git", "config", "user.name", "Tester"], cwd=tmp_path, check=False)
+        subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=tmp_path, check=False)
+        subprocess.run(["git", "add", "."], cwd=tmp_path, check=False)
+        subprocess.run(["git", "commit", "-m", "init"], cwd=tmp_path, check=False)
+
+        qa = TestReport(passed=0, failed=0, errors=0, findings=[])
+        sec = SecurityReport(audit_target=".", findings=[], summary=SecuritySummary(critical=0, high=0, medium=0, low=0))
+
+        passed, results = HardInvariantEngine.evaluate(
+            qa_report=qa,
+            sec_report=sec,
+            workspace_root=tmp_path,
+            objective="create an normal login page using HTML",
+        )
+        assert passed
+        qa_inv = next(r for r in results if r.name == "INVARIANT_1_QA_PASS")
+        assert qa_inv.passed
+
 
 class TestWorktreeManager:
     def test_directory_fallback_worktree(self, tmp_path: Path) -> None:
