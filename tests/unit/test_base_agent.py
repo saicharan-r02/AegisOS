@@ -161,6 +161,22 @@ class TestParseAgentResponse:
 class TestBaseAgentExecution:
     """Tests for single ReAct step execution and autonomous multi-turn loops."""
 
+    def test_tool_success_without_final_answer_is_not_task_completion(self) -> None:
+        response = '{"thought": "calculate", "action": "add", "action_input": {"a": 2, "b": 3}}'
+        sm = StateMachine(state=AgentState(mission_goal="Compute sum", status=MissionStatus.RUNNING))
+        agent = BaseAgent(
+            name="Dev", role=AgentRole.DEV, system_prompt="s",
+            llm=MockChatModel(responses=[response]), state_machine=sm, tools=[_AddTool()],
+        )
+
+        records = agent.run_task("compute 2 + 3", max_iterations=1)
+        assert records[0].tool_name == "add"
+        assert records[0].status == StepStatus.SUCCESS
+        assert agent._last_run_completed is False
+
+        agent.run_task("finish with a concise final result", max_iterations=1)
+        assert agent._last_run_completed is True
+
     def test_single_react_step_tool_dispatch(self) -> None:
         llm=MockChatModel(
             responses=['{"thought": "Add numbers","action": "add","action_input": {"a": 10,"b": 20}}']
@@ -335,7 +351,10 @@ class TestBaseAgentExecution:
 
     def test_run_task_hits_max_iterations_cap(self) -> None:
         llm=MockChatModel(
-            responses=['{"thought": "Looping","action": "add","action_input": {"a": 1,"b": 1}}']*10
+            responses=[
+                f'{{"thought": "Step {i}","action": "add","action_input": {{"a": {i},"b": 1}}}}'
+                for i in range(10)
+            ]
         )
         state=AgentState(mission_goal="Loop test",status=MissionStatus.RUNNING)
         sm=StateMachine(state=state)
