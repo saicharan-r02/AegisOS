@@ -85,6 +85,38 @@ class TestGitHubIntegration:
         assert "$0.0125" in pr_body
         assert "8,500" in pr_body
 
+    def test_fetch_issue_fallback(self):
+        gh = GitHubIntegration()
+        issue = gh.fetch_issue("https://github.com/saicharan-r02/AegisOS/issues/99")
+        assert issue.owner == "saicharan-r02"
+        assert issue.repo == "AegisOS"
+        assert issue.number == 99
+        assert "99" in issue.title
+
+    def test_create_or_update_pr_mock(self, monkeypatch):
+        gh = GitHubIntegration(token="dummy-token")
+        called = []
+
+        def mock_api_request(method, endpoint, payload=None):
+            called.append((method, endpoint, payload))
+            if method == "GET":
+                return []
+            if method == "POST":
+                return {"html_url": "https://github.com/test-owner/test-repo/pull/1"}
+            return {}
+
+        monkeypatch.setattr(gh, "_api_request", mock_api_request)
+        pr_url = gh.create_or_update_pr(
+            owner="test-owner",
+            repo="test-repo",
+            head_branch="aegis/issue-1",
+            base_branch="main",
+            title="fix(#1): test fix",
+            body="test body",
+        )
+        assert pr_url == "https://github.com/test-owner/test-repo/pull/1"
+        assert any(c[0] == "POST" and "/pulls" in c[1] for c in called)
+
 
 class TestConfigValidation:
     """Validate aegis.toml config file parsing and schema validation."""
