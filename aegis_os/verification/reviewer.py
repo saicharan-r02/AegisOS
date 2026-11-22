@@ -60,6 +60,10 @@ class ReviewReport(BaseModel):
     blocking_reasons: list[str] = Field(
         default_factory=list, description="Blockers that must be fixed"
     )
+    verdict_failed: bool = Field(
+        default=False,
+        description="True when the reviewer could not produce a valid verdict (never an approval).",
+    )
 
     @property
     def is_approved(self) -> bool:
@@ -150,45 +154,63 @@ Security Status:
 Please review the diff against the objective and output your structured JSON response.
 """
 
-        try:
-            messages = [
-                SystemMessage(content=REVIEWER_SYSTEM_PROMPT),
-                HumanMessage(content=prompt_content),
-            ]
-            response = self.llm.invoke(messages)
-            content = getattr(response, "content", str(response))
+        messages = [
+            SystemMessage(content=REVIEWER_SYSTEM_PROMPT),
+            HumanMessage(content=prompt_content),
+        ]
+        last_error = "no valid JSON verdict with a 'decision' field was found in the reviewer output"
+        for _attempt in range(2):  # one retry: reasoning models sometimes answer in prose first
+            try:
+                response = self.llm.invoke(messages)
+                content = getattr(response, "content", str(response))
+                parsed = self._parse_verdict(content if isinstance(content, str) else str(content))
+                if parsed is not None:
+                    return parsed
+            except Exception as exc:  # provider/network errors must not turn into approvals
+                last_error = f"{type(exc).__name__}: {exc}"
 
-            # Parse JSON block
-            json_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", content, re.DOTALL)
-            raw_json = json_match.group(1) if json_match else content.strip()
+        # Fail CLOSED: a reviewer that cannot judge must never approve.
+        return ReviewReport(
+            decision=ReviewDecision.CHANGES_REQUESTED,
+            score=1,
+            summary=f"Review could not be completed: {last_error}",
+            blocking_reasons=[f"Reviewer produced no valid verdict ({last_error})."],
+            verdict_failed=True,
+        )
 
-            # Find first {
-            start_idx = raw_json.find("{")
-            end_idx = raw_json.rfind("}")
-            if start_idx != -1 and end_idx != -1:
-                data = json.loads(raw_json[start_idx : end_idx + 1])
-                decision_str = str(data.get("decision", "APPROVED")).upper()
-                decision = (
-                    ReviewDecision.APPROVED
-                    if "APPROV" in decision_str and "CHANGES" not in decision_str
-                    else ReviewDecision.CHANGES_REQUESTED
-                )
-                findings = [ReviewFinding(**f) for f in data.get("findings", [])]
+    @staticmethod
+    def _parse_verdict(content: str) -> ReviewReport | None:
+        """Return a ReviewReport only when the output holds a JSON object with a valid decision."""
+        decoder = json.JSONDecoder()
+        candidates: list[str] = [m.group(1) for m in re.finditer(r"```(?:json)?\s*(.*?)\s*```", content, re.DOTALL)]
+        candidates.append(content)
+        for text in candidates:
+            for pos, char in enumerate(text):
+                if char != "{":
+                    continue
+                try:
+                    data, _ = decoder.raw_decode(text, pos)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(data, dict) or "decision" not in data:
+                    continue
+                decision_str = str(data["decision"]).upper()
+                if "CHANGES" in decision_str:
+                    decision = ReviewDecision.CHANGES_REQUESTED
+                elif "APPROV" in decision_str:
+                    decision = ReviewDecision.APPROVED
+                else:
+                    continue
+                try:
+                    findings = [ReviewFinding(**f) for f in data.get("findings", [])]
+                    score = min(10, max(1, int(data.get("score", 8))))
+                except (TypeError, ValueError):
+                    continue
                 return ReviewReport(
                     decision=decision,
-                    score=int(data.get("score", 8)),
+                    score=score,
                     summary=str(data.get("summary", "Review completed.")),
                     findings=findings,
-                    blocking_reasons=list(data.get("blocking_reasons", [])),
+                    blocking_reasons=[str(r) for r in data.get("blocking_reasons", [])],
                 )
-        except Exception:
-            pass
-
-        # Fallback to approved if deterministic checks passed
-        return ReviewReport(
-            decision=ReviewDecision.APPROVED,
-            score=8,
-            summary="Code review passed: changes cleanly implement objective and pass tests.",
-            findings=[],
-            blocking_reasons=[],
-        )
+        return None
