@@ -56,3 +56,7 @@ class CheckpointNotFoundError(KernelError):
         )
         self.session_id = session_id
         self.step_index = step_index
+
+
+class MissionAbortedError(KernelError):
+    """Raised inside a running mission when the operator cancels it."""
