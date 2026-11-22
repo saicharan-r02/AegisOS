@@ -102,3 +102,31 @@ class TestASTGrepTool:
         )
         assert result.success is False
         assert "Path does not exist" in result.error
+
+
+class TestASTGrepWorkspaceScoping:
+    """Real run: ast_grep searched the server's own folder (incl. .venv) instead of the project."""
+
+    def _tool(self, tmp_path):
+        (tmp_path / "car").mkdir()
+        (tmp_path / "car" / "models.py").write_text("class Car:\n    pass\n")
+        (tmp_path / ".venv" / "Lib" / "site-packages").mkdir(parents=True)
+        (tmp_path / ".venv" / "Lib" / "site-packages" / "lib.py").write_text("class Car:\n    pass\n")
+        return ASTGrepTool(tmp_path)
+
+    def test_relative_path_resolves_inside_the_workspace(self, tmp_path):
+        result = self._tool(tmp_path).run({"symbol_name": "Car", "search_path": "./car"})
+        assert result.success and "models.py" in result.output
+
+    def test_dot_skips_venv_and_site_packages(self, tmp_path):
+        result = self._tool(tmp_path).run({"symbol_name": "Car", "search_path": "."})
+        assert result.success and "models.py" in result.output
+        assert ".venv" not in result.output and "site-packages" not in result.output
+
+    def test_paths_outside_the_workspace_are_refused(self, tmp_path):
+        result = self._tool(tmp_path).run({"symbol_name": "Car", "search_path": "../.."})
+        assert not result.success
+
+    def test_output_paths_are_relative_to_the_workspace(self, tmp_path):
+        result = self._tool(tmp_path).run({"symbol_name": "Car", "search_path": "."})
+        assert str(tmp_path) not in result.output
