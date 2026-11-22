@@ -139,16 +139,28 @@ class TestAPIPhase8Endpoints:
         init_app(db_path)
         return TestClient(app)
 
-    def test_mission_launch_and_list(self, client: TestClient):
+    def test_mission_launch_and_list(self, client: TestClient, tmp_path: Path, monkeypatch):
+        import aegis_os.api as api
+
+        class _Noop:
+            def __init__(self, **kwargs):
+                self.machine = kwargs["state_machine"]
+
+            def execute_mission(self, goal):
+                self.machine.start_mission()
+                self.machine.complete_mission("noop")
+
+        monkeypatch.setattr(api, "_build_orchestrator", lambda **kw: _Noop(**kw))
+        monkeypatch.chdir(tmp_path)
         res = client.post("/api/missions", json={
             "goal": "Test API launch",
-            "workspace": ".",
+            "workspace": str(tmp_path / "ws"),
             "strategy": "adaptive"
         })
         assert res.status_code == 200
         data = res.json()
         assert data["success"] is True
-        assert data["session_id"].startswith("mission-")
+        assert len(data["session_id"]) == 36  # a real UUID, not a made-up "mission-<time>" label
 
     def test_pause_resume_cancel_controls(self, client: TestClient):
         sess = "ctrl-sess"
@@ -193,8 +205,6 @@ class TestAPIPhase8Endpoints:
         assert act_res.json()["status"] == "APPROVED"
 
     def test_get_acceptance_criteria(self, client: TestClient):
+        # An unknown mission must NOT be reported as passing.
         res = client.get("/api/missions/sess-demo/acceptance")
-        assert res.status_code == 200
-        data = res.json()
-        assert "criteria" in data
-        assert len(data["criteria"]) >= 1
+        assert res.status_code == 404
