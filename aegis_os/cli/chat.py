@@ -83,7 +83,6 @@ class AegisChatSession:
                     f"[bold green]Repository Map Outline:[/bold green]\n{outline}"
                 )
             else:
-                # Answer inquiry using local search or summary
                 self.display.console.print(f"[dim]Investigating: {user_input}[/dim]")
                 search = CodeSearchEngine(self.workspace_root)
                 results = search.search(user_input, top_k=3)
