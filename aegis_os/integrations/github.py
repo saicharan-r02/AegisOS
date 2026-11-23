@@ -132,7 +132,6 @@ class GitHubIntegration:
         body: str,
     ) -> str:
         """Create a new GitHub Pull Request or update an existing open PR for this branch."""
-        # 1. Check if an open PR exists
         try:
             existing = self._api_request(
                 "GET",
@@ -149,7 +148,6 @@ class GitHubIntegration:
         except Exception as exc:
             logger.debug("Existing PR check returned: %s", exc)
 
-        # 2. Create new PR
         created = self._api_request(
             "POST",
             f"/repos/{owner}/{repo}/pulls",
@@ -185,7 +183,6 @@ class GitHubIntegration:
         ws = Path(workspace).resolve()
         token = self.token or os.getenv("GITHUB_TOKEN", "").strip()
 
-        # 1. Commit any remaining changes
         subprocess.run(["git", "add", "-A"], cwd=ws, check=False)
         status_proc = subprocess.run(
             ["git", "status", "--porcelain"],
@@ -202,7 +199,6 @@ class GitHubIntegration:
             )
             subprocess.run(["git", "commit", "-m", commit_title], cwd=ws, check=False)
 
-        # 2. Push branch to remote
         push_target = "origin"
         if token:
             push_target = f"https://x-access-token:{token}@github.com/{owner}/{repo}.git"
@@ -222,7 +218,6 @@ class GitHubIntegration:
                 err_msg = push_res.stderr.strip() or fallback_res.stderr.strip()
                 raise RuntimeError(f"Git push failed for branch '{branch}': {err_msg}")
 
-        # 3. Detect default branch
         base_branch = "main"
         try:
             repo_info = self._api_request("GET", f"/repos/{owner}/{repo}")
@@ -230,7 +225,6 @@ class GitHubIntegration:
         except Exception:
             pass
 
-        # 4. Compose PR description
         pr_body = self.compose_pr_body(
             issue=issue,
             goal=goal,
@@ -240,7 +234,6 @@ class GitHubIntegration:
             security_summary=security_summary,
         )
 
-        # 5. Open PR
         pr_title = (
             f"fix(#{issue.number}): {issue.title}"
             if issue
