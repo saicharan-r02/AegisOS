@@ -86,11 +86,11 @@ class ApprovalItem(BaseModel):
     command: str
     reason: str
     timestamp: str
-    status: str = "PENDING"  # PENDING, APPROVED, DENIED
+    status: str = "PENDING"
 
 
 class ApprovalActionRequest(BaseModel):
-    action: str  # "approve" or "deny"
+    action: str
 
 
 class KernelEventSchema(BaseModel):
