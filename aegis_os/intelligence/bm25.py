@@ -11,18 +11,15 @@ from pathlib import Path
 
 def tokenize_code(text: str) -> list[str]:
     """Tokenize source code splitting identifiers, camelCase, and punctuation."""
-    # Split by non-alphanumeric
     raw_tokens = re.findall(r"[A-Za-z0-9_]+", text)
     tokens: list[str] = []
     for token in raw_tokens:
         lower = token.lower()
         tokens.append(lower)
-        # Split snake_case
         if "_" in token:
             for part in token.split("_"):
                 if part:
                     tokens.append(part.lower())
-        # Split camelCase
         subwords = re.findall(r"[A-Z]?[a-z]+|[A-Z]+(?=[A-Z][a-z]|\d|\W|$)|\d+", token)
         if len(subwords) > 1:
             for sub in subwords:
