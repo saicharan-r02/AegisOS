@@ -44,10 +44,8 @@ class ShadowBranchManager:
             return branch_name
 
         self._base_branch = self.get_current_branch()
-        # Checkout existing or create new branch
         proc = self._run_git(["checkout", "-b", branch_name])
         if proc.returncode != 0:
-            # If already exists, switch to it
             self._run_git(["checkout", branch_name])
 
         return branch_name
@@ -58,11 +56,9 @@ class ShadowBranchManager:
         tag_name = f"aegis/checkpoint/{clean_id}/{step_index}"
 
         if self.is_git_repo():
-            # Stage all changes except ignored directories
             self._run_git(["add", "-A"])
             commit_msg = message or f"aegis checkpoint: step {step_index} [{session_id}]"
             self._run_git(["commit", "-m", commit_msg, "--allow-empty"])
-            # Create or update tag
             self._run_git(["tag", "-f", tag_name])
             rev_proc = self._run_git(["rev-parse", "HEAD"])
             return rev_proc.stdout.strip() if rev_proc.returncode == 0 else tag_name
@@ -90,10 +86,8 @@ class ShadowBranchManager:
         tag_name = f"aegis/checkpoint/{clean_id}/{step_index}"
 
         if self.is_git_repo():
-            # Verify tag exists
             tag_check = self._run_git(["rev-parse", "--verify", tag_name])
             if tag_check.returncode == 0:
-                # Reset hard to tag and clean untracked files
                 reset_proc = self._run_git(["reset", "--hard", tag_name])
                 self._run_git(["clean", "-fd"])
                 if reset_proc.returncode == 0:
