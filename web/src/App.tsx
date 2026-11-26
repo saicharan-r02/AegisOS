@@ -546,7 +546,7 @@ export default function App() {
   /* ══════════════════ DASHBOARD PAGE ══════════════════ */
   const renderDashboardPage = () => (
     <div className="dashboard-grid">
-      {/* ── APPROVALS INBOX (Phase 8 requirement) ── */}
+      {/* Approvals Inbox */}
       {approvals.length > 0 && (
         <div className="approvals-banner" style={{ gridColumn: '1 / -1' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
@@ -650,7 +650,7 @@ export default function App() {
         </div>
       )}
 
-      {/* ── AUTONOMOUS PULL REQUEST BANNER (SINGLE HUMAN APPROVAL GATE) ── */}
+      {/* Autonomous Pull Request Banner */}
       {selectedMission?.pr_url && (
         <div className="card" style={{
           gridColumn: '1 / -1',
@@ -883,7 +883,7 @@ export default function App() {
   const renderLaunchPage = () => (
     <div style={{ maxWidth: 620, display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
 
-      {/* ── GOLD STANDARD: GitHub Issue → Autonomous PR ── */}
+      {/* GitHub Issue to PR */}
       <div style={{
         background: 'linear-gradient(135deg, rgba(0,210,255,0.08) 0%, rgba(16,185,129,0.08) 100%)',
         border: '1px solid rgba(16,185,129,0.4)',
