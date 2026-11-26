@@ -254,7 +254,6 @@ def test_resume_persisted_paused_mission_after_server_restart(client, tmp_path):
     wait_for(lambda: _status(session_id) == "ABORTED")
 
 
-
 def test_resume_budget_is_not_implicitly_extended():
     state = AgentState(
         mission_goal="budget test",
