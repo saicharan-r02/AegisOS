@@ -59,7 +59,6 @@ class TestToolResult:
         assert "key" in serialized
 
 
-
 class TestBaseAegisToolValidation:
     """Pydantic validation must catch malformed LLM arguments gracefully."""
 
