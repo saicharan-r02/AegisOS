@@ -95,7 +95,6 @@ class ExecuteCommandTool(BaseAegisTool):
         if self.unsafe_local:
             logger.warning("UNSAFE LOCAL MODE: executing an auto-allowed command on the host.")
 
-        # Build quota (allow per-call timeout override)
         if args.timeout_seconds is not None:
             quota = ExecutionQuota(
                 timeout_seconds=args.timeout_seconds,
@@ -110,7 +109,6 @@ class ExecuteCommandTool(BaseAegisTool):
             quota=quota,
         )
 
-        # Format output for agent readability
         output_parts = []
         if result.stdout.strip():
             output_parts.append(f"STDOUT:\n{result.stdout}")
