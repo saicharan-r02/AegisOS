@@ -59,7 +59,6 @@ class TDDCoordinator:
         )
         self.dev.run(red_prompt, max_iterations=5)
 
-        # Run pytest to verify the test fails
         red_run = self.runner.run({"test_path": test_file})
         has_failure = (
             not red_run.success
@@ -87,7 +86,6 @@ class TDDCoordinator:
         )
         self.dev.run(green_prompt, max_iterations=8)
 
-        # Run pytest to verify the test now passes
         green_run = self.runner.run({"test_path": test_file})
         now_passing = (
             green_run.success
