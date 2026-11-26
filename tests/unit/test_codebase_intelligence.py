@@ -89,7 +89,6 @@ dependencies = { fastapi = "^0.100" }
 
 class TestSymbolExtractionAndRepoMap:
     def test_multi_language_extraction(self) -> None:
-        # Python
         py_code = """
 import os
 from math import sqrt
@@ -106,7 +105,6 @@ class Calculator:
         assert "os" in py_imps
         assert "math" in py_imps
 
-        # JS/TS
         ts_code = """
 import { useState } from 'react';
 export class UserService {
@@ -119,7 +117,6 @@ export function helper() {}
         assert any(s.name == "helper" for s in ts_syms)
         assert "react" in ts_imps
 
-        # Go
         go_code = """
 package main
 import "fmt"
