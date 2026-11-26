@@ -16,13 +16,11 @@ class TestShadowBranchManager:
         mgr = ShadowBranchManager(tmp_path)
         session_id = "sess-alpha-001"
 
-        # Step 1: Write file v1
         file1 = tmp_path / "service.py"
         file1.write_text("VERSION = 1\n", encoding="utf-8")
         snap1 = mgr.commit_step(session_id, step_index=1)
         assert Path(snap1).is_dir()
 
-        # Step 2: Modify file to v2 and add new file
         file1.write_text("VERSION = 2\n", encoding="utf-8")
         file2 = tmp_path / "new_module.py"
         file2.write_text("def new_func(): pass\n", encoding="utf-8")
@@ -31,10 +29,8 @@ class TestShadowBranchManager:
         assert file1.read_text(encoding="utf-8") == "VERSION = 2\n"
         assert file2.exists()
 
-        # Rollback to Step 1
         ok, msg = mgr.restore_step(session_id, step_index=1)
         assert ok
-        # Verify file1 restored to v1 and file2 is removed
         assert file1.read_text(encoding="utf-8") == "VERSION = 1\n"
         assert not file2.exists()
 
@@ -55,18 +51,15 @@ class TestShadowBranchManager:
         branch = mgr.create_shadow_branch(session_id)
         assert branch == f"aegis/mission/{session_id}"
 
-        # Step 1: Create good code
         (tmp_path / "code.py").write_text("x = 10\n", encoding="utf-8")
         mgr.commit_step(session_id, step_index=1)
 
-        # Step 2: Create bad code
         (tmp_path / "code.py").write_text("x = BROKEN_SYNTAX(\n", encoding="utf-8")
         (tmp_path / "unwanted.py").write_text("garbage\n", encoding="utf-8")
         mgr.commit_step(session_id, step_index=2)
 
         assert (tmp_path / "code.py").read_text(encoding="utf-8") == "x = BROKEN_SYNTAX(\n"
 
-        # Roll back to Step 1
         ok, msg = mgr.restore_step(session_id, step_index=1)
         assert ok
         assert (tmp_path / "code.py").read_text(encoding="utf-8") == "x = 10\n"
