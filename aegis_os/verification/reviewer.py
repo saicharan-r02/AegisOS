@@ -108,7 +108,6 @@ class AegisReviewer:
                 ],
             )
 
-        # Check if QA or SEC are failing
         if qa_report and (
             getattr(qa_report, "failed", 0) > 0 or getattr(qa_report, "errors", 0) > 0
         ):
@@ -132,7 +131,6 @@ class AegisReviewer:
                 blocking_reasons=["Security audit findings must be remediated."],
             )
 
-        # Format fresh review prompt
         prompt_content = f"""### Code Review Request
 
 Objective:
