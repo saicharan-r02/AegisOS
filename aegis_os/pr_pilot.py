@@ -1,5 +1,3 @@
-"""PR Pilot engine for AegisOS: issue analysis, patch synthesis, and 10-step PR guide."""
-
 from __future__ import annotations
 
 import logging
@@ -381,8 +379,8 @@ def execute_pr_pilot(
     tests: str = "",
     summary: str = "",
     root_cause: str = "",
-    affected_files: list[str] | None = None,
-) -> dict[str, Any]:
+    affected_files: list[str] | None = None) -> dict[str, Any]:
+
     import os
     import subprocess
     from pathlib import Path
@@ -390,9 +388,14 @@ def execute_pr_pilot(
     from langchain_core.messages import HumanMessage, SystemMessage
 
     from aegis_os.kernel.llm import get_llm
+    from aegis_os.kernel.providers import ProviderRouter
     from aegis_os.workspace.repo_manager import _reset_dir
+    parsed_issue = parse_github_issue_url(issue_url)
 
-    owner, repo, issue_num = parse_github_issue_url(issue_url)
+    if parsed_issue is None:
+        raise ValueError("A valid GitHub issue or pull request URL is required.")
+
+    owner, repo, issue_num = parsed_issue
     branch_name = branch.strip() or slugify_branch(pr_title or f"fix-issue-{issue_num}", issue_num)
     ws = Path("workspaces") / f"pr-pilot-{owner}-{repo}-{issue_num}"
     ws.parent.mkdir(parents=True, exist_ok=True)
@@ -416,7 +419,6 @@ def execute_pr_pilot(
             applied = True
 
     if not applied:
-        # Targeted single-pass edit on existing affected files without blind search loops
         candidates = [f for f in (affected_files or []) if (ws / f).is_file()]
         if candidates:
             llm = get_llm(role="DEV", max_tokens=8192)
@@ -432,11 +434,17 @@ def execute_pr_pilot(
                     f"Return ONLY the complete updated file content inside a single ``` block, or NO_CHANGES if unchanged.\n\n"
                     f"Current `{rel}`:\n```\n{content}\n```"
                 )
-                res = llm.complete([
-                    SystemMessage(content="You are a precise code editor. Output only the updated file inside ``` fences."),
-                    HumanMessage(content=prompt),
-                ])
-                raw = str(getattr(res.message, "content", "") or "")
+                messages = [
+                            SystemMessage(content="You are a precise code editor. Output only the updated file inside ``` fences."),
+                            HumanMessage(content=prompt)
+                            ]
+
+                if isinstance(llm, ProviderRouter):
+                    response = llm.complete(messages).message
+                else:
+                    response = llm.invoke(messages)
+
+                raw = str(getattr(response, "content", "") or "")
                 if "NO_CHANGES" not in raw and "```" in raw:
                     parts = raw.split("```")
                     if len(parts) >= 3:

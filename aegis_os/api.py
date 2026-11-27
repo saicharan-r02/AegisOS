@@ -387,15 +387,16 @@ def _maybe_open_pull_request(
         if pr_url:
             state.context_variables["pr_url"] = pr_url
             store.save_checkpoint(state)
-            global_bus.publish(
-                PROpenedEvent(
+            if global_bus is not None:
+                global_bus.publish(
+                    PROpenedEvent(
                     session_id=state.session_id,
-                    pr_url=pr_url,
-                    branch=branch,
-                    owner=owner,
-                    repo=repo,
+                        pr_url=pr_url,
+                        branch=branch,
+                        owner=owner,
+                        repo=repo
+                    )
                 )
-            )
             logger.info("Mission %s created Pull Request: %s", state.session_id, pr_url)
             return pr_url
     except Exception as exc:

@@ -109,7 +109,10 @@ def estimate_tokens(messages: Sequence[BaseMessage] | str) -> int:
     else:
         parts: list[str] = []
         for message in messages:
-            parts.append(str(message.content))
+            if isinstance(message, BaseMessage):
+                parts.append(str(message.content))
+            else:
+                parts.append(str(message))
         content = "\n".join(parts)
     return max(1, (len(content) + 3) // 4)
 
