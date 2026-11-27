@@ -42,13 +42,20 @@ def _long_windows_path(path: Path) -> Path:
     """Expand 8.3 aliases on Windows when the target already exists."""
     if os.name != "nt":
         return path
+
     try:
+        windll = getattr(ctypes, "windll", None)
+        if windll is None:
+            return path
+
         buffer = ctypes.create_unicode_buffer(32768)
-        length = ctypes.windll.kernel32.GetLongPathNameW(str(path), buffer, len(buffer))
+        length = windll.kernel32.GetLongPathNameW(str(path), buffer, len(buffer))
+
         if length and length < len(buffer):
             return Path(buffer.value)
     except (AttributeError, OSError):
         pass
+
     return path
 
 

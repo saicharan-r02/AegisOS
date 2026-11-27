@@ -102,12 +102,7 @@ class PluginManager:
         """Load third-party tools registered under entry points."""
         loaded = 0
         try:
-            eps = importlib.metadata.entry_points()
-            tool_eps = (
-                eps.select(group=cls.ENTRY_POINT_TOOLS)
-                if hasattr(eps, "select")
-                else eps.get(cls.ENTRY_POINT_TOOLS, [])
-            )
+            tool_eps = importlib.metadata.entry_points(group=cls.ENTRY_POINT_TOOLS)
             for ep in tool_eps:
                 tool_cls = ep.load()
                 if isinstance(tool_cls, type) and issubclass(tool_cls, BaseAegisTool):

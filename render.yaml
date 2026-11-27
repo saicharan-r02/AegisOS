@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: aegisos
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: oregon
+    healthCheckPath: /api/missions
+    envVars:
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: PYTHONUTF8
+        value: "1"
+      - key: AEGIS_ALLOWED_ORIGINS
+        value: "*"
+      - key: NVIDIA_API_KEY
+        sync: false
+      - key: NVIDIA_BASE_URL
+        value: "https://integrate.api.nvidia.com/v1"
+      - key: GITHUB_TOKEN
+        sync: false

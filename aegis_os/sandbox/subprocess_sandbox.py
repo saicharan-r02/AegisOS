@@ -86,7 +86,10 @@ class SubprocessSandbox(SandboxExecutor):
             "shell": _IS_WINDOWS,
         }
         if _IS_WINDOWS:
-            kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+            creation_flag = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", None)
+            if creation_flag is None:
+                raise RuntimeError("Windows process group creation flag is unavailable.")
+            kwargs["creationflags"] = creation_flag
         else:
             kwargs["start_new_session"] = True
 

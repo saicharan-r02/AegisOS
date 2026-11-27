@@ -7,7 +7,6 @@ import {
 } from 'lucide-react'
 import './index.css'
 
-/* ──────────────────────────────── types ──────────────────────────────── */
 interface KernelEvent { event_type: string; payload: any; event_id?: number }
 interface Mission {
   session_id: string; goal: string; status: string;
@@ -43,9 +42,12 @@ interface SpanRecord {
 
 type Page = 'dashboard' | 'missions' | 'launch' | 'memory'
 
-/* ──────────────────────────────── constants ──────────────────────────── */
-const API = 'http://127.0.0.1:8000'
-const WS = 'ws://127.0.0.1:8000'
+const isDev = typeof window !== 'undefined' && (window.location.port === '5173' || window.location.port === '3000')
+const API = isDev ? 'http://127.0.0.1:8000' : ''
+const wsProto = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+const WS = isDev
+  ? 'ws://127.0.0.1:8000'
+  : (typeof window !== 'undefined' ? `${wsProto}//${window.location.host}` : 'ws://127.0.0.1:8000')
 
 const AGENTS = [
   { id: 'CTO', label: 'Architect', emoji: '🧠', color: '#00d2ff', rgb: '0,210,255' },
@@ -133,7 +135,6 @@ function missionBadgeClass(status: string) {
   }
 }
 
-/* ══════════════════════════════ App ══════════════════════════════════════ */
 export default function App() {
   const [page, setPage] = useState<Page>('dashboard')
   const [events, setEvents] = useState<(KernelEvent & { ts: string })[]>([])
@@ -143,25 +144,20 @@ export default function App() {
   const [toasts, setToasts] = useState<Toast[]>([])
   const toastId = useRef(0)
 
-  // Stats
   const [stats, setStats] = useState<Stats>(EMPTY_STATS)
   const pendingSelect = useRef<string | null>(null)
   const statsTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const everConnected = useRef(false)
 
-  // Approvals
   const [approvals, setApprovals] = useState<ApprovalItem[]>([])
 
-  // Modals & Panels
   const [activeDiff, setActiveDiff] = useState<string | null>(null)
   const [activeTrace, setActiveTrace] = useState<SpanRecord[] | null>(null)
   const [activeAcceptance, setActiveAcceptance] = useState<AcceptanceItem[] | null>(null)
   const [selectedMission, setSelectedMission] = useState<Mission | null>(null)
 
-  // Memory State
   const [memoryData, setMemoryData] = useState<{ episodes: any[]; conventions: any[] }>({ episodes: [], conventions: [] })
 
-  // Launcher state
   const [goal, setGoal] = useState('')
   const [repoUrl, setRepoUrl] = useState('')
   const [repoBranch, setRepoBranch] = useState('main')
@@ -169,19 +165,16 @@ export default function App() {
   const [workspace, setWorkspace] = useState('')
   const [strategy, setStrategy] = useState('adaptive')
   const [launching, setLaunching] = useState(false)
-  // GitHub Issue-to-PR launcher state
   const [issueUrl, setIssueUrl] = useState('')
   const [issueGoalExtra, setIssueGoalExtra] = useState('')
   const [issueLaunching, setIssueLaunching] = useState(false)
 
-  /* ── toast helper ── */
   const addToast = useCallback((msg: string, kind: Toast['kind'] = 'info') => {
     const id = ++toastId.current
     setToasts(p => [...p, { id, msg, kind }])
     setTimeout(() => setToasts(p => p.filter(t => t.id !== id)), 4000)
   }, [])
 
-  /* ── fetch missions & stats (the API returns newest first; every number is real) ── */
   const fetchStats = useCallback(() => {
     fetch(`${API}/api/stats`)
       .then(r => r.json())
@@ -236,7 +229,6 @@ export default function App() {
     return () => clearInterval(timer)
   }, [fetchMissions, fetchApprovals, fetchMemory])
 
-  /* ── WebSocket ── */
   useEffect(() => {
     let ws: WebSocket
     let retryTimer: ReturnType<typeof setTimeout>
@@ -275,7 +267,6 @@ export default function App() {
     return () => { ws?.close(); clearTimeout(retryTimer) }
   }, [addToast, fetchMissions, fetchApprovals, scheduleStatsRefresh])
 
-  /* ── Action handlers ── */
   const handleLaunch = async () => {
     if (!goal.trim()) return
     setLaunching(true)
@@ -543,10 +534,9 @@ export default function App() {
     </header>
   )
 
-  /* ══════════════════ DASHBOARD PAGE ══════════════════ */
   const renderDashboardPage = () => (
     <div className="dashboard-grid">
-      {/* Approvals Inbox */}
+      {/* ── APPROVALS INBOX (Phase 8 requirement) ── */}
       {approvals.length > 0 && (
         <div className="approvals-banner" style={{ gridColumn: '1 / -1' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
@@ -573,7 +563,6 @@ export default function App() {
         </div>
       )}
 
-      {/* ── STATS ROW ── */}
       <div className="stats-row" style={{ gridColumn: '1 / -1' }}>
         <div className="stat-card">
           <div className="stat-label">Total Missions</div>
@@ -603,7 +592,6 @@ export default function App() {
         </div>
       </div>
 
-      {/* ── ACTIVE MISSION CONTROL BAR ── */}
       {selectedMission && (
         <div className="card" style={{ gridColumn: '1 / -1', padding: '0.85rem 1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
@@ -650,7 +638,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Autonomous Pull Request Banner */}
+      {/* ── AUTONOMOUS PULL REQUEST BANNER (SINGLE HUMAN APPROVAL GATE) ── */}
       {selectedMission?.pr_url && (
         <div className="card" style={{
           gridColumn: '1 / -1',
@@ -696,7 +684,6 @@ export default function App() {
         </div>
       )}
 
-      {/* ── AGENT DEPARTMENT MATRIX ── */}
       <div className="card" style={{ gridColumn: '1 / span 2' }}>
         <div className="card-header">
           <div className="card-title">
@@ -721,7 +708,6 @@ export default function App() {
         </div>
       </div>
 
-      {/* ── LIVE TELEMETRY STREAM ── */}
       <div className="card" style={{ gridColumn: '3 / span 2', minHeight: 400 }}>
         <div className="card-header">
           <div className="card-title">
@@ -756,7 +742,6 @@ export default function App() {
     </div>
   )
 
-  /* ══════════════════ MISSIONS PAGE ══════════════════ */
   const renderMissionsPage = () => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
       <div className="card">
@@ -828,7 +813,6 @@ export default function App() {
     </div>
   )
 
-  /* ══════════════════ MEMORY PAGE ══════════════════ */
   const renderMemoryPage = () => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
       <div className="card">
@@ -883,7 +867,7 @@ export default function App() {
   const renderLaunchPage = () => (
     <div style={{ maxWidth: 620, display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
 
-      {/* GitHub Issue to PR */}
+      {/* ── GOLD STANDARD: GitHub Issue → Autonomous PR ── */}
       <div style={{
         background: 'linear-gradient(135deg, rgba(0,210,255,0.08) 0%, rgba(16,185,129,0.08) 100%)',
         border: '1px solid rgba(16,185,129,0.4)',
@@ -953,7 +937,6 @@ export default function App() {
         </button>
       </div>
 
-      {/* ── DIVIDER ── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
         <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.08)' }} />
         <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
@@ -962,7 +945,6 @@ export default function App() {
         <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.08)' }} />
       </div>
 
-      {/* ── GENERIC MISSION LAUNCHER ── */}
       <div className="launcher-card">
         <div className="launcher-header">
           <Rocket size={15} color="var(--cyan)" />
@@ -1045,7 +1027,6 @@ export default function App() {
     </div>
   )
 
-  /* ══════════════════ MODALS ══════════════════ */
   return (
     <div className="app-layout">
       {renderSidebar()}
@@ -1059,7 +1040,6 @@ export default function App() {
         </main>
       </div>
 
-      {/* Diff Viewer Modal */}
       {activeDiff !== null && (
         <div className="modal-backdrop" onClick={() => setActiveDiff(null)}>
           <div className="modal-dialog" onClick={e => e.stopPropagation()}>
@@ -1084,7 +1064,6 @@ export default function App() {
         </div>
       )}
 
-      {/* Trace Tree Modal */}
       {activeTrace !== null && (
         <div className="modal-backdrop" onClick={() => setActiveTrace(null)}>
           <div className="modal-dialog" onClick={e => e.stopPropagation()}>
@@ -1118,7 +1097,6 @@ export default function App() {
         </div>
       )}
 
-      {/* Acceptance Criteria Modal */}
       {activeAcceptance !== null && (
         <div className="modal-backdrop" onClick={() => setActiveAcceptance(null)}>
           <div className="modal-dialog" onClick={e => e.stopPropagation()}>
@@ -1146,7 +1124,6 @@ export default function App() {
         </div>
       )}
 
-      {/* Toast notifications */}
       <div className="toast-container">
         {toasts.map(t => (
           <div key={t.id} className={`toast ${t.kind}`}>
