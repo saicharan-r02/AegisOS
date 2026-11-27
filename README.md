@@ -59,7 +59,6 @@ python -m pip install -r requirements.txt
 python -m pip install -e .
 
 cp .env.example .env
-# Edit .env and set NVIDIA_API_KEY (and GITHUB_TOKEN for automatic PR creation)
 ```
 
 ### 2. Build the sandbox image (once)

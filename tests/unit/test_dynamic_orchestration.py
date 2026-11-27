@@ -39,18 +39,14 @@ class TestDynamicPlan:
         assert len(groups) >= 1
         assert any(len(g) == 2 for g in groups)
 
-        # Complete T1
         plan.mark_task("T1", TaskStatus.COMPLETED)
-        # T3 still waiting on T2
         ready = plan.get_ready_tasks()
         assert [t.task_id for t in ready] == ["T2"]
 
-        # Complete T2 -> T3 becomes ready
         plan.mark_task("T2", TaskStatus.COMPLETED)
         ready = plan.get_ready_tasks()
         assert [t.task_id for t in ready] == ["T3"]
 
-        # Complete T3
         plan.mark_task("T3", TaskStatus.COMPLETED)
         assert plan.is_all_completed()
 

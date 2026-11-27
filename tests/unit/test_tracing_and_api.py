@@ -65,7 +65,6 @@ class TestMissionTracer:
         assert finished_trace.total_tokens == 225
         assert finished_trace.total_cost_usd == pytest.approx(0.002)
 
-        # Check nesting
         spans = finished_trace.spans
         assert spans[1].parent_span_id == spans[0].span_id
         tracer.close()
@@ -164,17 +163,14 @@ class TestAPIPhase8Endpoints:
 
     def test_pause_resume_cancel_controls(self, client: TestClient):
         sess = "ctrl-sess"
-        # Pause
         r_pause = client.post(f"/api/missions/{sess}/pause")
         assert r_pause.status_code == 200
         assert r_pause.json()["action"] == "pause"
 
-        # Resume
         r_res = client.post(f"/api/missions/{sess}/resume")
         assert r_res.status_code == 200
         assert r_res.json()["action"] == "resume"
 
-        # Cancel
         r_can = client.post(f"/api/missions/{sess}/cancel")
         assert r_can.status_code == 200
         assert r_can.json()["action"] == "cancel"

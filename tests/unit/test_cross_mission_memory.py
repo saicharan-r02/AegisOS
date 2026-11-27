@@ -35,13 +35,11 @@ class TestMemoryStore:
         store.record_episode(ep1)
         store.record_episode(ep2)
 
-        # Query for payment webhook
         matches = store.query_episodes("stripe webhook payload verification", top_k=1)
         assert len(matches) == 1
         assert matches[0].episode_id == "ep-101"
         assert "raw request body" in matches[0].successful_patterns[0]
 
-        # Query for celery database
         db_matches = store.query_episodes("celery pool connections", top_k=1)
         assert len(db_matches) == 1
         assert db_matches[0].episode_id == "ep-102"
@@ -49,21 +47,18 @@ class TestMemoryStore:
     def test_conventions_reinforcement_and_file_sync(self, tmp_path: Path) -> None:
         store = MemoryStore(tmp_path)
 
-        # First reinforcement
         c1 = store.record_convention(
             pattern="Use pytest-asyncio for async endpoint tests",
             reason="Avoids unhandled coroutine warnings",
         )
         assert c1.success_count == 1
 
-        # Second reinforcement of the same pattern
         c2 = store.record_convention(
             pattern="Use pytest-asyncio for async endpoint tests",
             reason="Avoids unhandled coroutine warnings",
         )
         assert c2.success_count == 2
 
-        # Verify conventions.json mirror was created and contains the convention
         conv_file = tmp_path / ".aegis" / "conventions.json"
         assert conv_file.is_file()
         data = json.loads(conv_file.read_text(encoding="utf-8"))

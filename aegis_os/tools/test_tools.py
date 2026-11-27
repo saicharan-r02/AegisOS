@@ -124,7 +124,6 @@ class PytestRunnerTool(BaseAegisTool):
             passed = int(passed_match.group(1)) if passed_match else 0
             failed = int(failed_match.group(1)) if failed_match else 0
             errors = int(errors_match.group(1)) if errors_match else 0
-        # Extract failing test names
         failing_tests = re.findall(r"FAILED\s+([\w/\\:.\-]+)", combined)
         no_tests_collected = (
             not result.timed_out

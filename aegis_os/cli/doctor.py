@@ -54,7 +54,6 @@ class AegisDoctor:
             self.display.console.print(
                 f"[bold green]✔ Git Client:[/bold green] {git_ver.stdout.strip()}"
             )
-            # Check if workspace is a git repo
             is_git_repo = (self.workspace_root / ".git").exists()
             if is_git_repo:
                 self.display.console.print(

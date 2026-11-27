@@ -65,7 +65,6 @@ def test_aegis_judge_execution(mock_run, mock_orchestrator):
     assert result.trace == []
 
 
-
 @patch("eval.engine.MissionOrchestrator")
 @patch("eval.engine.SubprocessSandbox.execute_command")
 def test_aegis_judge_retains_verifier_stdout_on_failure(mock_exec, mock_orchestrator):

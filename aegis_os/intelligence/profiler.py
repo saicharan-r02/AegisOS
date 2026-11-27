@@ -87,7 +87,6 @@ class ProjectProfiler:
         lint_command = "ruff check ."
         build_command: str | None = None
 
-        # Check Python
         pyproject = self.workspace_root / "pyproject.toml"
         reqs = self.workspace_root / "requirements.txt"
         setup_py = self.workspace_root / "setup.py"
@@ -116,7 +115,6 @@ class ProjectProfiler:
                 except Exception:
                     pass
 
-        # Check JavaScript / TypeScript
         pkg_json = self.workspace_root / "package.json"
         if pkg_json.is_file():
             languages.add("javascript")
@@ -148,14 +146,12 @@ class ProjectProfiler:
             except Exception:
                 pass
 
-        # Check Go
         if (self.workspace_root / "go.mod").is_file() or any(self.workspace_root.glob("*.go")):
             languages.add("go")
             package_manager = "go"
             test_command = "go test ./..."
             lint_command = "golangci-lint run"
 
-        # Check Rust
         if (self.workspace_root / "Cargo.toml").is_file():
             languages.add("rust")
             package_manager = "cargo"
@@ -163,7 +159,6 @@ class ProjectProfiler:
             lint_command = "cargo clippy"
             build_command = "cargo build"
 
-        # Check Java
         if (self.workspace_root / "pom.xml").is_file():
             languages.add("java")
             package_manager = "maven"
@@ -177,7 +172,6 @@ class ProjectProfiler:
             test_command = "gradle test"
             build_command = "gradle build"
 
-        # Determine primary language
         ordered_langs = ["python", "typescript", "javascript", "rust", "go", "java"]
         primary = "python"
         for candidate in ordered_langs:

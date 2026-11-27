@@ -50,7 +50,6 @@ class TestIntegrityGuard:
         """Detect broad `except Exception: pass` or `except: pass` in test bodies."""
         for n in ast.walk(node):
             if isinstance(n, ast.ExceptHandler):
-                # Check if body is just `pass`
                 if len(n.body) == 1 and isinstance(n.body[0], ast.Pass):
                     return True
         return False

@@ -64,11 +64,9 @@ class BaseAegisTool(ABC):
         Returns:
             ToolResult — always. Never raises.
         """
-        # Step 1: Runtime input validation via Pydantic
         try:
             validated_args = self.args_schema.model_validate(raw_args)
         except ValidationError as exc:
-            # Format Pydantic validation errors into actionable agent feedback
             error_details = "; ".join(
                 f"Field '{'.'.join(str(location) for location in e['loc'])}': {e['msg']}"
                 for e in exc.errors()
@@ -82,7 +80,6 @@ class BaseAegisTool(ABC):
                 metadata={"validation_errors": exc.errors()},
             )
 
-        # Step 2: Execute with full exception containment
         try:
             return self._execute(validated_args)
         except Exception as exc:  # noqa: BLE001

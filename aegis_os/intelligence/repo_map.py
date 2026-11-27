@@ -96,7 +96,6 @@ class SymbolExtractor:
         symbols: list[Symbol] = []
         imports: list[str] = []
 
-        # Find imports
         for match in re.finditer(
             r"(?:import\s+.*?from\s+['\"](.*?)['\"]|require\(['\"](.*?)['\"]\))", content
         ):
@@ -104,7 +103,6 @@ class SymbolExtractor:
             if module:
                 imports.append(module)
 
-        # Classes & interfaces
         for match in re.finditer(
             r"^\s*(?:export\s+)?(?:default\s+)?(class|interface)\s+([A-Za-z0-9_]+)",
             content,
@@ -115,7 +113,6 @@ class SymbolExtractor:
             line = content[: match.start()].count("\n") + 1
             symbols.append(Symbol(name=name, kind=kind, line=line, signature=f"{kind} {name}"))
 
-        # Functions
         for match in re.finditer(
             r"^\s*(?:export\s+)?(?:async\s+)?function\s+([A-Za-z0-9_]+)\s*\((.*?)\)",
             content,
@@ -133,7 +130,6 @@ class SymbolExtractor:
                 )
             )
 
-        # Arrow functions assigned to const/let/var
         for match in re.finditer(
             r"^\s*(?:export\s+)?(?:const|let|var)\s+([A-Za-z0-9_]+)\s*=\s*(?:async\s*)?\((.*?)\)\s*=>",
             content,
@@ -158,7 +154,6 @@ class SymbolExtractor:
         symbols: list[Symbol] = []
         imports: list[str] = []
 
-        # Imports
         for match in re.finditer(r"import\s+(?:\((.*?)\)|\"([^\"]+)\")", content, re.DOTALL):
             block = match.group(1)
             single = match.group(2)
@@ -170,7 +165,6 @@ class SymbolExtractor:
                     if imp:
                         imports.append(imp)
 
-        # Functions and methods
         for match in re.finditer(
             r"func\s+(?:\((?:[A-Za-z0-9_*\s]+)\)\s+)?([A-Za-z0-9_]+)\s*\((.*?)\)", content
         ):
@@ -180,7 +174,6 @@ class SymbolExtractor:
                 Symbol(name=name, kind="function", line=line, signature=f"func {name}(...)")
             )
 
-        # Structs and interfaces
         for match in re.finditer(r"type\s+([A-Za-z0-9_]+)\s+(struct|interface)", content):
             name = match.group(1)
             kind = match.group(2)
@@ -194,11 +187,9 @@ class SymbolExtractor:
         symbols: list[Symbol] = []
         imports: list[str] = []
 
-        # use declarations
         for match in re.finditer(r"use\s+([A-Za-z0-9_:]+)", content):
             imports.append(match.group(1))
 
-        # fn, struct, enum, trait
         for match in re.finditer(
             r"(?:pub(?:\(crate\))?\s+)?(fn|struct|enum|trait)\s+([A-Za-z0-9_]+)", content
         ):

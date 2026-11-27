@@ -167,9 +167,8 @@ class WriteFileTool(BaseAegisTool):
         temp_path = safe_path.with_suffix(safe_path.suffix + ".aegis_tmp")
         try:
             temp_path.write_text(args.content, encoding="utf-8")
-            temp_path.replace(safe_path)  # Atomic on same filesystem
+            temp_path.replace(safe_path)
         except OSError as exc:
-            # Attempt cleanup of temp file
             try:
                 temp_path.unlink(missing_ok=True)
             except OSError:
