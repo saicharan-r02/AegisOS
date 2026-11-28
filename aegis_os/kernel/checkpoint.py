@@ -185,7 +185,7 @@ class CheckpointStore:
         return restored_state
 
     def list_missions(self) -> list[dict[str, Any]]:
-        """Return all tracked missions for audit and dashboard view."""
+        """Return all tracked missions for audit and API listing."""
         try:
             cursor = self._conn.execute(
                 "SELECT session_id, goal, status, current_step_index, created_at, updated_at, "
@@ -207,7 +207,7 @@ class CheckpointStore:
         return [dict(row) for row in cursor.fetchall()]
 
     def get_stats(self) -> dict[str, Any]:
-        """Real aggregate numbers for the dashboard (never estimated or hardcoded)."""
+        """Real aggregate numbers for the stats API (never estimated or hardcoded)."""
         by_status = {
             str(row["status"]): int(row["n"])
             for row in self._conn.execute("SELECT status, COUNT(*) AS n FROM missions GROUP BY status")
