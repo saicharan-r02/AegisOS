@@ -19,7 +19,7 @@ bandit>=1.7.8
 detect-secrets>=1.5.0
 pip-audit>=2.7.0
 
-# Web Dashboard
+# Web API & PR Pilot UI server
 fastapi>=0.111.0
 uvicorn>=0.30.0
 websockets>=12.0
