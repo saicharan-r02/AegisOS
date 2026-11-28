@@ -59,6 +59,7 @@ python -m pip install -r requirements.txt
 python -m pip install -e .
 
 cp .env.example .env
+# Edit .env and set NVIDIA_API_KEY (and GITHUB_TOKEN for automatic PR creation)
 ```
 
 ### 2. Build the sandbox image (once)
@@ -67,13 +68,24 @@ docker build -f Dockerfile.sandbox-python -t aegis-sandbox-python:latest .
 ```
 Without Docker, you can use `aegis run ... --unsafe-local` (in-code command policy still applies).
 
-### 3. Launch PR Pilot & Dashboard
+### 3. Build the PR Pilot UI (once)
+The web UI is a Vite + React + TypeScript app in `web/`. Node.js 20+ is required. The build writes to `aegis_os/static/`, which is generated and git-ignored.
+```powershell
+cd web
+npm install
+npm run build
+cd ..
+```
+
+### 4. Launch PR Pilot
 ```powershell
 aegis doctor
 aegis server --port 8000
 ```
 
-Open `http://127.0.0.1:8000` in your browser.
+Open `http://127.0.0.1:8000` in your browser. If the UI has not been built, `/pr-pilot` answers with `503` and the build command above.
+
+**UI development:** run `aegis server --port 8000` in one terminal and `npm run dev` inside `web/` in another. Vite serves the app on `http://localhost:5173` with hot reload and proxies `/api` to the API server. `npm run lint` and `npm run build` type-check and lint the UI; the Docker image and CI run the same build.
 
 ---
 
