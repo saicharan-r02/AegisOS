@@ -13,4 +13,5 @@ workspace
 workspaces
 node_modules
 web/node_modules
+aegis_os/static
 *.log
