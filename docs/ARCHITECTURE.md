@@ -8,7 +8,7 @@ AegisOS is an enterprise-grade autonomous software-engineering organization coor
 
 ```mermaid
 graph TD
-    User([Developer / CI / GitHub Issue]) --> CLI[Aegis CLI / War Room API]
+    User([Developer / CI / GitHub Issue]) --> CLI[Aegis CLI / PR Pilot UI / Mission API]
     CLI --> Supervisor[Adaptive Orchestrator]
 
     subgraph IntelligencePlane [Codebase Intelligence]
@@ -127,7 +127,7 @@ flowchart LR
 AegisOS/
 ├── aegis_os/
 │   ├── agents/          # Department agent archetypes (CTO, Dev, QA, Sec, Ops)
-│   ├── api.py           # FastAPI War Room server (mission control, event bus, WebSocket)
+│   ├── api.py           # FastAPI server (PR Pilot endpoints, mission control, event bus, WebSocket)
 │   ├── api_models.py    # Pydantic request/response models for the REST API
 │   ├── cli/             # Rich terminal CLI, display formatting, doctor & chat
 │   ├── config/          # Schema validator for aegis.toml
@@ -140,7 +140,7 @@ AegisOS/
 │   ├── pr_pilot.py      # PR Pilot feature: GitHub issue analysis & patch guide
 │   ├── sandbox/         # Docker container sandbox, subprocess fallback, policy
 │   ├── security/        # SecretRedactor & static analysis scanners
-│   ├── static/          # Served static assets: War Room dashboard & PR Pilot UI
+│   ├── static/          # Generated PR Pilot UI build output (git-ignored; `npm run build` in `web/`)
 │   ├── timetravel/      # ShadowBranchManager & TimeTravelController
 │   ├── tools/           # Base tool contracts, AST tools, filesystem & VCS tools
 │   ├── tracing/         # Structured span recording, JSONL export & replay engine
@@ -148,6 +148,6 @@ AegisOS/
 │   └── workspace/       # External repo cloning, mission workspace creation & ZIP export
 ├── docs/                # Architecture, baseline, results, ADRs & eval docs
 ├── eval/                # 34-task benchmark suite, golden datasets & judge engine
-├── web/                 # Vite + React TypeScript War Room mission control dashboard
+├── web/                 # Vite + React + TypeScript PR Pilot web UI (builds into `aegis_os/static/`)
 └── tests/               # Unit and end-to-end integration test suites
 ```
