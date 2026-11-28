@@ -159,15 +159,15 @@ AegisOS/
 │   ├── memory/                 # episodic memory and convention retrieval
 │   ├── tracing/                # structured trace and telemetry
 │   ├── timetravel/             # checkpoint rollback/replay
-│   └── static/                 # dashboard UI assets
+│   └── static/                 # generated PR Pilot UI build (git-ignored)
 ├── tests/
 │   ├── unit/
 │   └── integration/
-├── web/                        # dashboard source
+├── web/                        # PR Pilot UI source (Vite + React + TypeScript)
 └── docs/                       # architecture, operations, evaluation
 ```
 
-Do not create more agents just to make the dashboard look busy. Add a specialist only when it owns a unique tool boundary or verification responsibility.
+Do not create more agents just to make the system look busy. Add a specialist only when it owns a unique tool boundary or verification responsibility.
 
 ## The most important remaining engineering work
 
