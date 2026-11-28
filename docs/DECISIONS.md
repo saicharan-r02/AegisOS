@@ -93,7 +93,7 @@ AegisOS is being transformed from a prototype ReAct multi-agent pipeline into an
   4. **CLI Integration:** Added `aegis rewind <step_index>` and `aegis rollback <session_id> <step_index>` subcommands.
 
 ## ADR 0009: Structured Mission Tracing, Zero-LLM Replay, and Hardened War Room API
-- **Status:** Accepted
+- **Status:** Accepted (decision 5, the War Room dashboard, superseded by ADR 0013)
 - **Date:** 2026-10-21
 - **Context:** Autonomous multi-agent pipelines require fine-grained observability, live telemetry, and control endpoints without exposing sensitive credentials or overwhelming clients.
 - **Decisions:**
@@ -137,5 +137,14 @@ AegisOS is being transformed from a prototype ReAct multi-agent pipeline into an
   6. **Docs corrected:** `REAL_AGENT_UPGRADE.md` resource ceiling figures updated to match `aegis.toml` and CLI defaults; cost-ceiling paragraph corrected (`max_cost_usd = 0`); RESULTS/DECISIONS ablation claims changed from "Proved" to "Reported"; DEMO sandbox image name updated; ADR 0002/0006 status notes added.
   7. **Test suite:** all tests pass on Python 3.11 with `ruff check` returning no errors after fixes.
 
-
-
+## ADR 0013: Remove the War Room Dashboard; PR Pilot (React + Vite) Is the Sole Web UI
+- **Status:** Accepted
+- **Date:** 2026-11-27
+- **Context:** The React + TypeScript War Room dashboard (ADR 0009) was replaced by the PR Pilot interface, but both were still shipped. `aegis_os/static/` held a committed build of the dashboard that `api.py` mounted at `/`, `web/` held its source, and PR Pilot lived beside it as a hand-written single HTML file with inline CSS/JS and a CDN import of three.js. The Vite + React toolchain is the project's preferred front-end stack, so PR Pilot moves onto it instead of leaving it.
+- **Decisions:**
+  1. **Dashboard removed:** every War Room component, style and mission-control client call in `web/`, and the committed dashboard build at `aegis_os/static/index.html` and `aegis_os/static/assets/`.
+  2. **PR Pilot on Vite + React + TypeScript:** `web/` now contains only the PR Pilot UI (typed API client, hooks, panes, lazily loaded three.js scene). It reproduces the former `pr-pilot.html` page for page; the standalone file is deleted. three.js is pinned to 0.170.0 and bundled instead of fetched from a CDN.
+  3. **Serving:** `/pr-pilot` serves the built `index.html`, `/assets` serves the bundle, and `/` redirects to `/pr-pilot`. If the UI is not built, `/pr-pilot` returns `503` with the build command and the API keeps working. The Vite dev server (`:5173`) is a CORS origin again for `npm run dev`, which proxies `/api`.
+  4. **Build output is generated:** Vite writes to `aegis_os/static/`, which is git-ignored. The `Dockerfile` builds it in a Node stage, CI runs `npm ci`, `npm run lint` and `npm run build` in a `frontend-build` job that the test job depends on, and `web` stays excluded from ruff.
+  5. **Backend retained:** the Mission Control REST/WebSocket API (`/api/missions`, `/api/stats`, `/api/memory`, `/api/approvals`, `/api/events`) is unchanged and remains covered by `test_api_real_missions.py` and `test_tracing_and_api.py`. Only its UI was removed.
+  6. **Regression guard:** `tests/unit/test_web_ui_routes.py` asserts the root redirect, the built/unbuilt behavior of `/pr-pilot`, that the old dashboard bundle stays gone, and that `web/src` contains no War Room markers.
