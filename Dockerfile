@@ -1,13 +1,16 @@
-FROM node:20-alpine AS frontend-builder
+# Stage 1: Build the PR Pilot web UI (React + Vite). Output lands in /app/aegis_os/static.
+FROM node:22-alpine AS frontend-builder
 WORKDIR /app/web
 COPY web/package*.json ./
-RUN npm ci --prefer-offline || npm install
+RUN npm ci
 COPY web/ .
 RUN npm run build
 
+# Stage 2: Production Python API and runtime environment
 FROM python:3.12-slim
 WORKDIR /app
 
+# Install security tools and VCS
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     curl \
@@ -17,7 +20,8 @@ COPY requirements.txt pyproject.toml README.md ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
-COPY --from=frontend-builder /app/web/dist /app/aegis_os/static
+# Copy the built UI into the directory FastAPI serves
+COPY --from=frontend-builder /app/aegis_os/static /app/aegis_os/static
 
 RUN pip install --no-cache-dir -e .
 
@@ -29,7 +33,7 @@ VOLUME ["/workspace", "/app/.aegis"]
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:${PORT:-8000}/api/missions || exit 1
+    CMD curl -f http://localhost:8000/api/missions || exit 1
 
 ENTRYPOINT ["aegis"]
-CMD ["server", "--host", "0.0.0.0"]
+CMD ["server", "--host", "0.0.0.0", "--port", "8000"]
