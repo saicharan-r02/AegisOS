@@ -216,15 +216,10 @@ def build_parser() -> argparse.ArgumentParser:
     server_p = subparsers.add_parser(
         "server",
         aliases=["api"],
-        help="Launch the War Room Web Dashboard backend",
+        help="Launch the AegisOS API server and PR Pilot web UI",
     )
     server_p.add_argument("--host", type=str, default="127.0.0.1", help="Host IP to bind to")
-    server_p.add_argument(
-        "--port",
-        type=int,
-        default=int(os.environ.get("PORT", 8000)),
-        help="Port to run on (defaults to $PORT or 8000)",
-    )
+    server_p.add_argument("--port", type=int, default=8000, help="Port to run on")
     server_p.add_argument(
         "--db-path",
         type=str,
@@ -291,7 +286,7 @@ def handle_run(args: argparse.Namespace, display: AegisDisplay) -> int:
     telemetry_listener = display.create_telemetry_handler()
     bus.subscribe("*", telemetry_listener)
 
-    # HTTP bridge: forward events to the War Room dashboard if it's running
+    # HTTP bridge: forward events to the API server's live event stream if it's running
     _server_url = "http://127.0.0.1:8000"
 
     def _http_bridge(event) -> None:
