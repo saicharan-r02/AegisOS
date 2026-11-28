@@ -4,7 +4,7 @@ Design rules that fix the old stub server:
   * ``POST /api/missions`` really runs the orchestrator in a background worker thread.
   * Events published from worker threads are marshalled safely onto the asyncio loop.
   * Pause / Resume / Cancel are honoured by the state machine before every step.
-  * Every number shown by the dashboard comes from the checkpoint database.
+  * Every number reported by the API comes from the checkpoint database.
   * Missions killed by a server restart are marked FAILED instead of RUNNING forever.
 """
 
@@ -28,7 +28,7 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from aegis_os.api_models import (
@@ -184,11 +184,7 @@ app.add_middleware(
 @app.middleware("http")
 async def security_and_rate_limit_middleware(request: Request, call_next):
     path = request.url.path
-    if (
-        path in {"/docs", "/openapi.json", "/redoc", "/api/events"}
-        or path.startswith("/assets")
-        or not path.startswith("/api/")
-    ):
+    if path in {"/docs", "/openapi.json", "/redoc", "/api/events"} or not path.startswith("/api/"):
         return await call_next(request)
 
     client_ip = request.client.host if request.client else "127.0.0.1"
@@ -387,16 +383,15 @@ def _maybe_open_pull_request(
         if pr_url:
             state.context_variables["pr_url"] = pr_url
             store.save_checkpoint(state)
-            if global_bus is not None:
-                global_bus.publish(
-                    PROpenedEvent(
+            global_bus.publish(
+                PROpenedEvent(
                     session_id=state.session_id,
-                        pr_url=pr_url,
-                        branch=branch,
-                        owner=owner,
-                        repo=repo
-                    )
+                    pr_url=pr_url,
+                    branch=branch,
+                    owner=owner,
+                    repo=repo,
                 )
+            )
             logger.info("Mission %s created Pull Request: %s", state.session_id, pr_url)
             return pr_url
     except Exception as exc:
@@ -1032,15 +1027,28 @@ async def pr_pilot_execute(req: PRPilotExecuteRequest) -> PRPilotExecuteResponse
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
+# Build output of the React + Vite app in web/ (`npm run build` writes here).
+_STATIC_DIR = Path(os.path.dirname(__file__)) / "static"
+
+
 @app.get("/pr-pilot")
 def serve_pr_pilot():
-    """Serve the standalone PR Pilot UI connected to AegisOS."""
-    pilot_file = Path(os.path.dirname(__file__)) / "static" / "pr-pilot.html"
-    if not pilot_file.is_file():
-        raise HTTPException(status_code=404, detail="PR Pilot UI not found")
-    return FileResponse(pilot_file, media_type="text/html")
+    """Serve the PR Pilot single-page app built from web/."""
+    index_file = _STATIC_DIR / "index.html"
+    if not index_file.is_file():
+        raise HTTPException(
+            status_code=503,
+            detail="PR Pilot UI is not built. Run `npm install && npm run build` inside web/.",
+        )
+    return FileResponse(index_file, media_type="text/html")
 
 
-_static_dir = Path(os.path.dirname(__file__)) / "static"
-if _static_dir.exists():
-    app.mount("/", StaticFiles(directory=str(_static_dir), html=True), name="static")
+@app.get("/", include_in_schema=False)
+def serve_root() -> RedirectResponse:
+    """PR Pilot is the only web interface, so the root URL lands on it."""
+    return RedirectResponse(url="/pr-pilot")
+
+
+# Hashed JS/CSS bundles referenced by index.html. check_dir=False keeps the API
+# importable (and testable) before the UI has been built.
+app.mount("/assets", StaticFiles(directory=_STATIC_DIR / "assets", check_dir=False), name="ui-assets")
