@@ -1,4 +1,4 @@
-"""Turn a finished mission into an episodic memory the dashboard (and future missions) can use."""
+"""Turn a finished mission into an episodic memory that future missions (and the API) can use."""
 
 from __future__ import annotations
 
