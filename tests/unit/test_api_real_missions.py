@@ -1,4 +1,4 @@
-"""The War Room backend really runs, controls, records and honestly reports missions."""
+"""The Mission Control API really runs, controls, records and honestly reports missions."""
 from __future__ import annotations
 
 import shutil
